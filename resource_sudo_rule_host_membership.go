@@ -128,6 +128,15 @@ func resourceFreeIPASudoRuleHostMembershipRead(ctx context.Context, d *schema.Re
 
 	res, err := client.SudoruleShow(&args, &optArgs)
 
+	if err != nil {
+		log.Printf("[DEBUG] Warning! Sudo rule does not exist")
+		d.Set("name", "")
+		d.Set("host", "")
+		d.Set("hostgroup", "")
+		d.SetId("")
+		return nil
+	}
+
 	switch typeId {
 	case "srh":
 		if res.Result.MemberhostHost == nil || !slices.Contains(*res.Result.MemberhostHost, host_id) {
@@ -136,7 +145,7 @@ func resourceFreeIPASudoRuleHostMembershipRead(ctx context.Context, d *schema.Re
 			d.Set("host", "")
 			d.Set("hostgroup", "")
 			d.SetId("")
-			return diag.Errorf("Error configuring freeipa Sudo rule host, host not assigned: %s", host_id)
+			return nil
 		}
 	case "srhg":
 		if res.Result.MemberhostHostgroup == nil || !slices.Contains(*res.Result.MemberhostHostgroup, host_id) {
@@ -145,7 +154,7 @@ func resourceFreeIPASudoRuleHostMembershipRead(ctx context.Context, d *schema.Re
 			d.Set("host", "")
 			d.Set("hostgroup", "")
 			d.SetId("")
-			return diag.Errorf("Error configuring freeipa Sudo rule host, hostgroup not assigned: %s", host_id)
+			return nil
 		}
 		// Hostmask not implemented yet. Maybe one day but I don't see the need.
 		// case "srhm":

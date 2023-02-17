@@ -110,6 +110,14 @@ func resourceFreeIPASudoRuleUserMembershipRead(ctx context.Context, d *schema.Re
 	}
 
 	res, err := client.SudoruleShow(&args, &optArgs)
+	if err != nil {
+		log.Printf("[DEBUG] Warning! Sudo rule  does not exist")
+		d.Set("name", "")
+		d.Set("user", "")
+		d.Set("group", "")
+		d.SetId("")
+		return nil
+	}
 
 	switch typeId {
 	case "sru":
@@ -119,16 +127,16 @@ func resourceFreeIPASudoRuleUserMembershipRead(ctx context.Context, d *schema.Re
 			d.Set("user", "")
 			d.Set("group", "")
 			d.SetId("")
-			return diag.Errorf("Error configuring freeipa Sudo rule user, user not assigned: %s", user_id)
+			return nil
 		}
 	case "srug":
 		if res.Result.MemberuserGroup == nil || !slices.Contains(*res.Result.MemberuserGroup, user_id) {
-			log.Printf("[DEBUG] Warning! Sudo rule user membership does not exist")
+			log.Printf("[DEBUG] Warning! Sudo rule group membership does not exist")
 			d.Set("name", "")
 			d.Set("user", "")
 			d.Set("group", "")
 			d.SetId("")
-			return diag.Errorf("Error configuring freeipa Sudo rule user, group not assigned: %s", user_id)
+			return nil
 		}
 	}
 

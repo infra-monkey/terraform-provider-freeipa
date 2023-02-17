@@ -90,6 +90,14 @@ func resourceFreeIPASudocmdgroupMembershipRead(ctx context.Context, d *schema.Re
 
 	res, err := client.SudocmdgroupShow(&args, &optArgs)
 
+	if err != nil {
+		log.Printf("[DEBUG] Warning! Sudo command group does not exist")
+		d.Set("name", "")
+		d.Set("sudocmd", "")
+		d.SetId("")
+		return nil
+	}
+
 	switch typeId {
 	case "sc":
 		if res.Result.MemberSudocmd == nil || !slices.Contains(*res.Result.MemberSudocmd, cmdId) {
@@ -97,7 +105,7 @@ func resourceFreeIPASudocmdgroupMembershipRead(ctx context.Context, d *schema.Re
 			d.Set("name", "")
 			d.Set("sudocmd", "")
 			d.SetId("")
-			return diag.Errorf("Error configuring freeipa Sudo command group, sudocmd not assigned: %s", cmdId)
+			return nil
 		}
 	}
 

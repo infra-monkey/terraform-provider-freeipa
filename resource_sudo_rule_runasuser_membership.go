@@ -96,6 +96,15 @@ func resourceFreeIPASudoRuleRunAsUserMembershipRead(ctx context.Context, d *sche
 
 	res, err := client.SudoruleShow(&args, &optArgs)
 
+	if err != nil {
+		log.Printf("[DEBUG] Warning! Sudo rule does not exist")
+		d.Set("name", "")
+		d.Set("runasgroup", "")
+		d.Set("runasgroup", "")
+		d.SetId("")
+		return nil
+	}
+
 	switch typeId {
 	case "srrau":
 		if (res.Result.IpasudorunasUser == nil || !slices.Contains(*res.Result.IpasudorunasUser, user_id)) && (res.Result.Ipasudorunasextuser == nil || !slices.Contains(*res.Result.Ipasudorunasextuser, user_id)) {
@@ -104,7 +113,7 @@ func resourceFreeIPASudoRuleRunAsUserMembershipRead(ctx context.Context, d *sche
 			d.Set("runasuser", "")
 			d.Set("runasgroup", "")
 			d.SetId("")
-			return diag.Errorf("Error configuring freeipa Sudo rule runasuser, runasuser not assigned: %s", user_id)
+			return nil
 		}
 	}
 
