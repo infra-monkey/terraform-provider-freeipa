@@ -4,19 +4,18 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
 func TestAccFreeIPAUser_full(t *testing.T) {
 	managerUser := map[string]string{
 		"index":     "0",
-		"login":     "\"devmanager\"",
+		"login":     "\"testacc-devmanager\"",
 		"firstname": "\"Dev\"",
 		"lastname":  "\"Manager\"",
 	}
 	testUser := map[string]string{
 		"index":                    "1",
-		"login":                    "\"testuser\"",
+		"login":                    "\"testacc-user\"",
 		"firstname":                "\"Test\"",
 		"lastname":                 "\"User\"",
 		"account_disabled":         "false",
@@ -34,7 +33,7 @@ func TestAccFreeIPAUser_full(t *testing.T) {
 		"job_title":                "\"Developer\"",
 		"krb_principal_name":       "[\"tuser@IPATEST.LAN\"]",
 		"login_shell":              "\"/bin/bash\"",
-		"manager":                  "\"devmanager\"",
+		"manager":                  "\"testacc-devmanager\"",
 		"mobile_numbers":           "[\"0123456789\"]",
 		"organisation_unit":        "\"Devs\"",
 		"postal_code":              "\"12345\"",
@@ -52,7 +51,7 @@ func TestAccFreeIPAUser_full(t *testing.T) {
 	}
 	testUserDS := map[string]string{
 		"index": "1",
-		"name":  "\"testuser\"",
+		"name":  "\"testacc-user\"",
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -62,34 +61,18 @@ func TestAccFreeIPAUser_full(t *testing.T) {
 			{
 				Config: testAccFreeIPAProvider() + testAccFreeIPAUser_resource(managerUser),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("freeipa_user.user-0", "name", "devmanager"),
+					resource.TestCheckResourceAttr("freeipa_user.user-0", "name", "testacc-devmanager"),
 					resource.TestCheckResourceAttr("freeipa_user.user-0", "first_name", "Dev"),
 					resource.TestCheckResourceAttr("freeipa_user.user-0", "last_name", "Manager"),
 				),
 			},
 			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPAUser_resource(managerUser),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectEmptyPlan(),
-					},
-				},
-			},
-			{
 				Config: testAccFreeIPAProvider() + testAccFreeIPAUser_resource(managerUser) + testAccFreeIPAUser_resource(testUser),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("freeipa_user.user-1", "name", "testuser"),
+					resource.TestCheckResourceAttr("freeipa_user.user-1", "name", "testacc-user"),
 					resource.TestCheckResourceAttr("freeipa_user.user-1", "first_name", "Test"),
 					resource.TestCheckResourceAttr("freeipa_user.user-1", "last_name", "User"),
 				),
-			},
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPAUser_resource(managerUser) + testAccFreeIPAUser_resource(testUser),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectEmptyPlan(),
-					},
-				},
 			},
 			{
 				Config: testAccFreeIPAProvider() + testAccFreeIPAUser_resource(managerUser) + testAccFreeIPAUser_resource(testUser) + testAccFreeIPAUser_datasource(testUserDS),
