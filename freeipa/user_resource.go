@@ -18,6 +18,7 @@ package freeipa
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -452,7 +453,10 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 	if len(data.SshPublicKeys.Elements()) > 0 {
 		var v []string
 		for _, value := range data.SshPublicKeys.Elements() {
-			val, _ := strconv.Unquote(value.String())
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] ssh key strconv error %s", err))
+			}
 			v = append(v, val)
 		}
 		optArgs.Ipasshpubkey = &v
@@ -502,7 +506,9 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Create freeipa user options optArgs.Ipasshpubkey %v (%v)", optArgs.Ipasshpubkey, reflect.TypeOf(optArgs.Ipasshpubkey)))
 	res, err := r.client.UserAdd(&args, &optArgs)
+	tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Create freeipa user %s returns %v", data.UID.String(), res))
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error creating freeipa user group: %s", err))
 		return
