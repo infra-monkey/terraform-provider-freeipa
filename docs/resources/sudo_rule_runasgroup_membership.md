@@ -14,11 +14,6 @@ Adding a member that already exist in FreeIPA will result in a warning but the m
 ## Example Usage
 
 ```terraform
-resource "freeipa_sudo_rule_runasgroup_membership" "group-0" {
-  name       = "sudo-rule-test"
-  runasgroup = "group01"
-}
-
 resource "freeipa_sudo_rule_runasgroup_membership" "groups-0" {
   name        = "sudo-rule-test"
   runasgroups = ["group01", "group02"]
@@ -34,12 +29,11 @@ resource "freeipa_sudo_rule_runasgroup_membership" "groups-0" {
 
 ### Required
 
+- `identifier` (String) Unique identifier to differentiate multiple sudo rule runasgroup membership resources on the same sudo rule. Manadatory for using runasgroups configurations.
 - `name` (String) Sudo rule name
 
 ### Optional
 
-- `identifier` (String) Unique identifier to differentiate multiple sudo rule runasgroup membership resources on the same sudo rule. Manadatory for using runasgroups configurations.
-- `runasgroup` (String, Deprecated) **deprecated** Run As Group to add to the sudo rule. Can be an external group (local group of ipa clients)
 - `runasgroups` (List of String) List of Run As Group to add to the sudo rule. Can be an external group (local group of ipa clients)
 
 ### Read-Only

@@ -6,20 +6,10 @@ resource "freeipa_hbac_policy" "hbac-0" {
   servicecategory = "all"
 }
 
-resource "freeipa_hbac_policy_user_membership" "hbac-user-1" {
-  name = "test-hbac"
-  user = "user-1"
-}
-
 resource "freeipa_hbac_policy_user_membership" "hbac-users-1" {
   name       = "test-hbac"
   users      = ["user-2", "user-3"]
   identifier = "hbac-users-1"
-}
-
-resource "freeipa_hbac_policy_user_membership" "hbac-group-1" {
-  name  = "test-hbac"
-  group = "usergroup-1"
 }
 
 resource "freeipa_hbac_policy_user_membership" "hbac-groups-1" {

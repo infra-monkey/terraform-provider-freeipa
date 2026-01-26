@@ -139,7 +139,6 @@ resource "freeipa_user" "testuser" {
 
 ### Optional
 
-- `account_disabled` (Boolean, Deprecated) Account disabled.
 - `addattr` (List of String) Add an attribute/value pair. Format is attr=value. The attribute must be part of the LDAP schema.
 - `auth_type` (Set of String) User authentication type. Possible values of the elements are (password, radius, otp, pkinit, hardened, idp, passkey)
 - `car_license` (List of String) Car Licenses

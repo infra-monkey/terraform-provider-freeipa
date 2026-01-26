@@ -14,11 +14,6 @@ Adding a member that already exist in FreeIPA will result in a warning but the m
 ## Example Usage
 
 ```terraform
-resource "freeipa_sudo_rule_runasuser_membership" "user-0" {
-  name      = "sudo-rule-test"
-  runasuser = "user01"
-}
-
 resource "freeipa_sudo_rule_runasuser_membership" "users-0" {
   name       = "sudo-rule-test"
   runasusers = ["user01", "user02"]
@@ -34,12 +29,11 @@ resource "freeipa_sudo_rule_runasuser_membership" "users-0" {
 
 ### Required
 
+- `identifier` (String) Unique identifier to differentiate multiple sudo rule runasuser membership resources on the same sudo rule. Manadatory for using runasusers configurations.
 - `name` (String) Sudo rule name
 
 ### Optional
 
-- `identifier` (String) Unique identifier to differentiate multiple sudo rule runasuser membership resources on the same sudo rule. Manadatory for using runasusers configurations.
-- `runasuser` (String, Deprecated) **deprecated** Run As User to add to the sudo rule. Can be an external user (local user of ipa clients)
 - `runasusers` (List of String) List of Run As User to add to the sudo rule. Can be an external user (local user of ipa clients)
 
 ### Read-Only

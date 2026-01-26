@@ -15,19 +15,9 @@ Adding a member that already exist in FreeIPA will result in a warning but the m
 
 ```terraform
 resource "freeipa_sudo_rule_denycmd_membership" "denied_cmd" {
-  name    = "sudo-rule-restricted"
-  sudocmd = "/usr/bin/systemctl"
-}
-
-resource "freeipa_sudo_rule_denycmd_membership" "denied_cmd" {
   name       = "sudo-rule-restricted"
   sudocmds   = ["/usr/bin/systemctl"]
   identifier = "denied_systemctl"
-}
-
-resource "freeipa_sudo_rule_denycmd_membership" "denied_cmdgrp" {
-  name          = "sudo-rule-restricted"
-  sudocmd_group = "service-management"
 }
 
 resource "freeipa_sudo_rule_denycmd_membership" "denied_cmdgrp" {
@@ -50,8 +40,6 @@ resource "freeipa_sudo_rule_denycmd_membership" "denied_cmdgrp" {
 ### Optional
 
 - `identifier` (String) Unique identifier to differentiate multiple sudo rule allowed membership resources on the same sudo rule. Manadatory for using sudocmds/sudocmd_groups configurations.
-- `sudocmd` (String, Deprecated) **deprecated** Sudo command to deny by the sudo rule
-- `sudocmd_group` (String, Deprecated) **deprecated** Sudo command group to deny by the sudo rule
 - `sudocmd_groups` (List of String) List of sudo command group to deny by the sudo rule
 - `sudocmds` (List of String) List of Sudo command to deny by the sudo rule
 

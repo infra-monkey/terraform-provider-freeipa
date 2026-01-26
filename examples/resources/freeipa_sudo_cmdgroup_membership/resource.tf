@@ -14,11 +14,9 @@ resource "freeipa_sudo_cmdgroup" "terminals" {
 }
 
 resource "freeipa_sudo_cmdgroup_membership" "terminal_bash" {
-  name    = freeipa_sudo_cmdgroup.terminals.id
-  sudocmd = freeipa_sudo_cmd.bash.id
-}
-
-resource "freeipa_sudo_cmdgroup_membership" "terminal_fish" {
-  name    = freeipa_sudo_cmdgroup.terminals.id
-  sudocmd = freeipa_sudo_cmd.fish.id
+  name = freeipa_sudo_cmdgroup.terminals.id
+  sudocmds = [
+    freeipa_sudo_cmd.bash.id,
+    freeipa_sudo_cmd.fish.id
+  ]
 }

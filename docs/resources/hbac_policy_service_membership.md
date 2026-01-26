@@ -22,20 +22,10 @@ resource "freeipa_hbac_policy" "hbac-0" {
   servicecategory = "all"
 }
 
-resource "freeipa_hbac_policy_service_membership" "hbac-svc-1" {
-  name    = "test-hbac"
-  service = "sshd"
-}
-
 resource "freeipa_hbac_policy_service_membership" "hbac-svc-2" {
   name       = "test-hbac"
   services   = ["sshd"]
   identifier = "hbac-svc-2"
-}
-
-resource "freeipa_hbac_policy_service_membership" "hbac-svcgrp-1" {
-  name         = "test-hbac"
-  servicegroup = "Sudo"
 }
 
 resource "freeipa_hbac_policy_service_membership" "hbac-svcgrp-2" {
@@ -53,13 +43,11 @@ resource "freeipa_hbac_policy_service_membership" "hbac-svcgrp-2" {
 
 ### Required
 
+- `identifier` (String) Unique identifier to differentiate multiple HBAC policy service membership resources on the same HBAC policy. Manadatory for using services/servicegroups configurations.
 - `name` (String) HBAC policy name
 
 ### Optional
 
-- `identifier` (String) Unique identifier to differentiate multiple HBAC policy service membership resources on the same HBAC policy. Manadatory for using services/servicegroups configurations.
-- `service` (String, Deprecated) **deprecated** Service name the policy is applied t
-- `servicegroup` (String, Deprecated) **deprecated** Service group name the policy is applied to
 - `servicegroups` (List of String) List of service group name the policy is applied to
 - `services` (List of String) List of service name the policy is applied t
 

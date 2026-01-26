@@ -14,26 +14,17 @@ Adding a member that already exist in FreeIPA will result in a warning but the m
 ## Example Usage
 
 ```terraform
-resource "freeipa_user_group_membership" "test-0" {
-  name = "test-group-2"
-  user = "roman"
-}
-
-resource "freeipa_user_group_membership" "test-1" {
-  name  = "test-group-2"
-  group = "test-group"
-}
-
-resource "freeipa_user_group_membership" "test-2" {
-  name            = "test-group-2"
-  external_member = "domain users@adtest.lan"
-}
-
 resource "freeipa_user_group_membership" "test-3" {
   name       = "test-group-3"
   users      = ["user1", "user2"]
   groups     = ["group1", "group2"]
   identifier = "my_unique_identifier"
+}
+
+resource "freeipa_user_group_membership" "test-3" {
+  name             = "test-extgroup-3"
+  external_members = ["domain users@adtest.lan"]
+  identifier       = "my_unique_identifier"
 }
 ```
 
@@ -49,12 +40,9 @@ resource "freeipa_user_group_membership" "test-3" {
 
 ### Optional
 
-- `external_member` (String, Deprecated) **deprecated** External member to add. name must refer to an external group. (Requires a valid AD Trust configuration).. Will be replaced by external_members.
 - `external_members` (List of String) External members to add as group members. name must refer to an external group. (Requires a valid AD Trust configuration).
-- `group` (String, Deprecated) **deprecated** User group to add. Will be replaced by groups.
 - `groups` (List of String) User groups to add as group members
 - `identifier` (String) Unique identifier to differentiate multiple user group membership resources on the same group. Manadatory for using users/groups/external_members configurations.
-- `user` (String, Deprecated) **deprecated** User to add. Will be replaced by users.
 - `users` (List of String) Users to add as group members
 
 ### Read-Only

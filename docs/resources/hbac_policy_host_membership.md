@@ -20,20 +20,10 @@ resource "freeipa_hbac_policy" "hbac-0" {
   enabled     = true
 }
 
-resource "freeipa_hbac_policy_host_membership" "hbac-host-1" {
-  name = "test-hbac"
-  host = "ipaclient1.ipatest.lan"
-}
-
 resource "freeipa_hbac_policy_host_membership" "hbac-hosts-1" {
   name       = "test-hbac"
   hosts      = ["ipaclient1.ipatest.lan", "ipaclient2.ipatest.lan"]
   identifier = "hbac-hosts-1"
-}
-
-resource "freeipa_hbac_policy_host_membership" "hostgroup-3" {
-  name      = "test-hbac"
-  hostgroup = "test-hostgroup"
 }
 
 resource "freeipa_hbac_policy_host_membership" "hostgroups-3" {
@@ -51,15 +41,13 @@ resource "freeipa_hbac_policy_host_membership" "hostgroups-3" {
 
 ### Required
 
+- `identifier` (String) Unique identifier to differentiate multiple HBAC policy host membership resources on the same HBAC policy. Manadatory for using hosts/hostgroups configurations.
 - `name` (String) HBAC policy name
 
 ### Optional
 
-- `host` (String, Deprecated) **deprecated** Host to add to the HBAC policy
-- `hostgroup` (String, Deprecated) **deprecated** Hostgroup to add to the HBAC policy
 - `hostgroups` (List of String) List of hostgroups to add to the HBAC policy
 - `hosts` (List of String) List of hosts to add to the HBAC policy
-- `identifier` (String) Unique identifier to differentiate multiple HBAC policy host membership resources on the same HBAC policy. Manadatory for using hosts/hostgroups configurations.
 
 ### Read-Only
 
