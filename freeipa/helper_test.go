@@ -81,9 +81,6 @@ func testAccFreeIPAUser_resource(dataset map[string]string) string {
 	if dataset["state"] != "" {
 		tf_def += fmt.Sprintf("  state = %s\n", dataset["state"])
 	}
-	if dataset["account_disabled"] != "" {
-		tf_def += fmt.Sprintf("  account_disabled = %s\n", dataset["account_disabled"])
-	}
 	if dataset["car_license"] != "" {
 		tf_def += fmt.Sprintf("  car_license = %s\n", dataset["car_license"])
 	}
@@ -198,16 +195,6 @@ func testAccFreeIPAUserGroupMembership_resource(dataset map[string]string) strin
 	resource "freeipa_user_group_membership" "membership-%s" {
 	  name  = %s
 	`, dataset["index"], dataset["name"])
-
-	if dataset["user"] != "" {
-		tf_def += fmt.Sprintf("  user = %s\n", dataset["user"])
-	}
-	if dataset["group"] != "" {
-		tf_def += fmt.Sprintf("  group = %s\n", dataset["group"])
-	}
-	if dataset["external_member"] != "" {
-		tf_def += fmt.Sprintf("  external_member = %s\n", dataset["external_member"])
-	}
 	if dataset["users"] != "" {
 		tf_def += fmt.Sprintf("  users = %s\n", dataset["users"])
 	}
@@ -431,13 +418,6 @@ func testAccFreeIPAHostGroupMembership_resource(dataset map[string]string) strin
 	resource "freeipa_host_hostgroup_membership" "membership-%s" {
 	  name  = %s
 	`, dataset["index"], dataset["name"])
-
-	if dataset["host"] != "" {
-		tf_def += fmt.Sprintf("  host = %s\n", dataset["host"])
-	}
-	if dataset["hostgroup"] != "" {
-		tf_def += fmt.Sprintf("  hostgroup = %s\n", dataset["hostgroup"])
-	}
 	if dataset["hosts"] != "" {
 		tf_def += fmt.Sprintf("  hosts = %s\n", dataset["hosts"])
 	}
@@ -480,9 +460,6 @@ func testAccFreeIPASudoCmdGrpMembership_resource(dataset map[string]string) stri
 	resource "freeipa_sudo_cmdgroup_membership" "sudocmdgroup-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["sudocmd"] != "" {
-		tf_def += fmt.Sprintf("  sudocmd = %s\n", dataset["sudocmd"])
-	}
 	if dataset["sudocmds"] != "" {
 		tf_def += fmt.Sprintf("  sudocmds = %s\n", dataset["sudocmds"])
 	}
@@ -559,14 +536,8 @@ func testAccFreeIPASudoAllowCmdMembership_resource(dataset map[string]string) st
 	resource "freeipa_sudo_rule_allowcmd_membership" "sudo-allow-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["sudocmd"] != "" {
-		tf_def += fmt.Sprintf("  sudocmd = %s\n", dataset["sudocmd"])
-	}
 	if dataset["sudocmds"] != "" {
 		tf_def += fmt.Sprintf("  sudocmds = %s\n", dataset["sudocmds"])
-	}
-	if dataset["sudocmd_group"] != "" {
-		tf_def += fmt.Sprintf("  sudocmd_group = %s\n", dataset["sudocmd_group"])
 	}
 	if dataset["sudocmd_groups"] != "" {
 		tf_def += fmt.Sprintf("  sudocmd_groups = %s\n", dataset["sudocmd_groups"])
@@ -583,14 +554,8 @@ func testAccFreeIPASudoDenyCmdMembership_resource(dataset map[string]string) str
 	resource "freeipa_sudo_rule_denycmd_membership" "sudo-deny-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["sudocmd"] != "" {
-		tf_def += fmt.Sprintf("  sudocmd = %s\n", dataset["sudocmd"])
-	}
 	if dataset["sudocmds"] != "" {
 		tf_def += fmt.Sprintf("  sudocmds = %s\n", dataset["sudocmds"])
-	}
-	if dataset["sudocmd_group"] != "" {
-		tf_def += fmt.Sprintf("  sudocmd_group = %s\n", dataset["sudocmd_group"])
 	}
 	if dataset["sudocmd_groups"] != "" {
 		tf_def += fmt.Sprintf("  sudocmd_groups = %s\n", dataset["sudocmd_groups"])
@@ -607,14 +572,8 @@ func testAccFreeIPASudoRuleHostMembership_resource(dataset map[string]string) st
 	resource "freeipa_sudo_rule_host_membership" "sudo-host-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["host"] != "" {
-		tf_def += fmt.Sprintf("  host = %s\n", dataset["host"])
-	}
 	if dataset["hosts"] != "" {
 		tf_def += fmt.Sprintf("  hosts = %s\n", dataset["hosts"])
-	}
-	if dataset["hostgroup"] != "" {
-		tf_def += fmt.Sprintf("  hostgroup = %s\n", dataset["hostgroup"])
 	}
 	if dataset["hostgroups"] != "" {
 		tf_def += fmt.Sprintf("  hostgroups = %s\n", dataset["hostgroups"])
@@ -631,14 +590,8 @@ func testAccFreeIPASudoRuleUserMembership_resource(dataset map[string]string) st
 	resource "freeipa_sudo_rule_user_membership" "sudo-user-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["user"] != "" {
-		tf_def += fmt.Sprintf("  user = %s\n", dataset["user"])
-	}
 	if dataset["users"] != "" {
 		tf_def += fmt.Sprintf("  users = %s\n", dataset["users"])
-	}
-	if dataset["group"] != "" {
-		tf_def += fmt.Sprintf("  group = %s\n", dataset["group"])
 	}
 	if dataset["groups"] != "" {
 		tf_def += fmt.Sprintf("  groups = %s\n", dataset["groups"])
@@ -655,9 +608,6 @@ func testAccFreeIPASudoRuleRunAsGroupMembership_resource(dataset map[string]stri
 	resource "freeipa_sudo_rule_runasgroup_membership" "sudorule-runasgroup-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["runasgroup"] != "" {
-		tf_def += fmt.Sprintf("  runasgroup = %s\n", dataset["runasgroup"])
-	}
 	if dataset["runasgroups"] != "" {
 		tf_def += fmt.Sprintf("  runasgroups = %s\n", dataset["runasgroups"])
 	}
@@ -673,9 +623,6 @@ func testAccFreeIPASudoRuleRunAsUserMembership_resource(dataset map[string]strin
 	resource "freeipa_sudo_rule_runasuser_membership" "sudorule-runasuser-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["runasuser"] != "" {
-		tf_def += fmt.Sprintf("  runasuser = %s\n", dataset["runasuser"])
-	}
 	if dataset["runasusers"] != "" {
 		tf_def += fmt.Sprintf("  runasusers = %s\n", dataset["runasusers"])
 	}
@@ -723,14 +670,8 @@ func testAccFreeIPAHbacPolicyHostMembership_resource(dataset map[string]string) 
 	resource "freeipa_hbac_policy_host_membership" "hbac-host-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["host"] != "" {
-		tf_def += fmt.Sprintf("  host = %s\n", dataset["host"])
-	}
 	if dataset["hosts"] != "" {
 		tf_def += fmt.Sprintf("  hosts = %s\n", dataset["hosts"])
-	}
-	if dataset["hostgroup"] != "" {
-		tf_def += fmt.Sprintf("  hostgroup = %s\n", dataset["hostgroup"])
 	}
 	if dataset["hostgroups"] != "" {
 		tf_def += fmt.Sprintf("  hostgroups = %s\n", dataset["hostgroups"])
@@ -747,14 +688,8 @@ func testAccFreeIPAHbacPolicyUserMembership_resource(dataset map[string]string) 
 	resource "freeipa_hbac_policy_user_membership" "hbac-user-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["user"] != "" {
-		tf_def += fmt.Sprintf("  user = %s\n", dataset["user"])
-	}
 	if dataset["users"] != "" {
 		tf_def += fmt.Sprintf("  users = %s\n", dataset["users"])
-	}
-	if dataset["group"] != "" {
-		tf_def += fmt.Sprintf("  group = %s\n", dataset["group"])
 	}
 	if dataset["groups"] != "" {
 		tf_def += fmt.Sprintf("  groups = %s\n", dataset["groups"])
@@ -771,14 +706,8 @@ func testAccFreeIPAHbacPolicyServiceMembership_resource(dataset map[string]strin
 	resource "freeipa_hbac_policy_service_membership" "hbac-service-membership-%s" {
 	  name        = %s
 	`, dataset["index"], dataset["name"])
-	if dataset["service"] != "" {
-		tf_def += fmt.Sprintf("  service = %s\n", dataset["service"])
-	}
 	if dataset["services"] != "" {
 		tf_def += fmt.Sprintf("  services = %s\n", dataset["services"])
-	}
-	if dataset["servicegroup"] != "" {
-		tf_def += fmt.Sprintf("  servicegroup = %s\n", dataset["servicegroup"])
 	}
 	if dataset["servicegroups"] != "" {
 		tf_def += fmt.Sprintf("  servicegroups = %s\n", dataset["servicegroups"])

@@ -12,50 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
-func TestAccFreeIPASudoCmdGrpMembership_simple(t *testing.T) {
-	testSudoCmd1 := map[string]string{
-		"index":       "1",
-		"name":        "\"/usr/bin/testacc-bash\"",
-		"description": "\"The bash shell\"",
-	}
-	testSudoCmdGrp := map[string]string{
-		"index":       "1",
-		"name":        "\"testacc-terminals\"",
-		"description": "\"A set of terminals\"",
-	}
-	testSudoCmdGrpMembership := map[string]string{
-		"index":   "1",
-		"name":    "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-		"sudocmd": "freeipa_sudo_cmd.sudocmd-1.name",
-	}
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPASudoCmd_resource(testSudoCmd1) + testAccFreeIPASudoCmdGrp_resource(testSudoCmdGrp) + testAccFreeIPASudoCmdGrpMembership_resource(testSudoCmdGrpMembership),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("freeipa_sudo_cmd.sudocmd-1", "name", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmd.sudocmd-1", "description", "The bash shell"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup.sudocmdgroup-1", "name", "testacc-terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup.sudocmdgroup-1", "description", "A set of terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "name", "testacc-terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "sudocmd", "/usr/bin/testacc-bash"),
-				),
-			},
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPASudoCmd_resource(testSudoCmd1) + testAccFreeIPASudoCmdGrp_resource(testSudoCmdGrp) + testAccFreeIPASudoCmdGrpMembership_resource(testSudoCmdGrpMembership),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectEmptyPlan(),
-					},
-				},
-			},
-		},
-	})
-}
-
 func TestAccFreeIPASudoCmdGrpMembership_simple_CaseInsensitive(t *testing.T) {
 	testSudoCmd1 := map[string]string{
 		"index":       "1",
@@ -68,9 +24,10 @@ func TestAccFreeIPASudoCmdGrpMembership_simple_CaseInsensitive(t *testing.T) {
 		"description": "\"A set of terminals\"",
 	}
 	testSudoCmdGrpMembership := map[string]string{
-		"index":   "1",
-		"name":    "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-		"sudocmd": "freeipa_sudo_cmd.sudocmd-1.name",
+		"index":      "1",
+		"name":       "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
+		"sudocmds":   "[freeipa_sudo_cmd.sudocmd-1.name]",
+		"identifier": "\"multiplecmds\"",
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -85,7 +42,7 @@ func TestAccFreeIPASudoCmdGrpMembership_simple_CaseInsensitive(t *testing.T) {
 					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup.sudocmdgroup-1", "name", "TestACC-Terminals"),
 					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup.sudocmdgroup-1", "description", "A set of terminals"),
 					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "name", "TestACC-Terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "sudocmd", "/usr/bin/TestACC-Bash"),
+					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "sudocmds.0", "/usr/bin/TestACC-Bash"),
 				),
 			},
 			{
@@ -122,10 +79,10 @@ func TestAccFreeIPASudoCmdGrpMembership_mutiple(t *testing.T) {
 		"description": "\"A set of terminals\"",
 	}
 	testSudoCmdGrpMembership := map[string]string{
-		"index":       "1",
-		"name":        "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-		"sudocmds":    "[freeipa_sudo_cmd.sudocmd-1.name,freeipa_sudo_cmd.sudocmd-2.name,freeipa_sudo_cmd.sudocmd-3.name]",
-		"indentifier": "multiplecmds",
+		"index":      "1",
+		"name":       "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
+		"sudocmds":   "[freeipa_sudo_cmd.sudocmd-1.name,freeipa_sudo_cmd.sudocmd-2.name,freeipa_sudo_cmd.sudocmd-3.name]",
+		"identifier": "\"multiplecmds\"",
 	}
 	testSudoCmdGrpDS := map[string]string{
 		"index": "1",
@@ -199,10 +156,10 @@ func TestAccFreeIPASudoCmdGrpMembership_mutiple_CaseInsensitive(t *testing.T) {
 		"description": "\"A set of terminals\"",
 	}
 	testSudoCmdGrpMembership := map[string]string{
-		"index":       "1",
-		"name":        "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-		"sudocmds":    "[freeipa_sudo_cmd.sudocmd-1.name,freeipa_sudo_cmd.sudocmd-2.name,freeipa_sudo_cmd.sudocmd-3.name]",
-		"indentifier": "multiplecmds",
+		"index":      "1",
+		"name":       "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
+		"sudocmds":   "[freeipa_sudo_cmd.sudocmd-1.name,freeipa_sudo_cmd.sudocmd-2.name,freeipa_sudo_cmd.sudocmd-3.name]",
+		"identifier": "\"multiplecmds\"",
 	}
 	testSudoCmdGrpDS := map[string]string{
 		"index": "1",

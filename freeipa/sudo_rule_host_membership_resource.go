@@ -19,9 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -48,40 +46,13 @@ type SudoRuleHostMembershipResource struct {
 type SudoRuleHostMembershipResourceModel struct {
 	Id         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`
-	Host       types.String `tfsdk:"host"`
 	Hosts      types.List   `tfsdk:"hosts"`
-	HostGroup  types.String `tfsdk:"hostgroup"`
 	HostGroups types.List   `tfsdk:"hostgroups"`
 	Identifier types.String `tfsdk:"identifier"`
 }
 
 func (r *SudoRuleHostMembershipResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_sudo_rule_host_membership"
-}
-
-func (r *SudoRuleHostMembershipResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hosts"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hostgroup"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hostgroups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("hostgroup"),
-			path.MatchRoot("hosts"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("hostgroup"),
-			path.MatchRoot("hostgroups"),
-		),
-	}
 }
 
 func (r *SudoRuleHostMembershipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -104,26 +75,10 @@ func (r *SudoRuleHostMembershipResource) Schema(ctx context.Context, req resourc
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"host": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Host to add to the sudo rule",
-				DeprecationMessage:  "use hosts instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"hosts": schema.ListAttribute{
 				MarkdownDescription: "List of hosts to add to the sudo rule",
 				Optional:            true,
 				ElementType:         types.StringType,
-			},
-			"hostgroup": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Hostgroup to add to the sudo rule",
-				DeprecationMessage:  "use hostgroups instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"hostgroups": schema.ListAttribute{
 				MarkdownDescription: "List of hostgroups to add to the sudo rule",
@@ -132,7 +87,7 @@ func (r *SudoRuleHostMembershipResource) Schema(ctx context.Context, req resourc
 			},
 			"identifier": schema.StringAttribute{
 				MarkdownDescription: "Unique identifier to differentiate multiple sudo rule host membership resources on the same sudo rule. Manadatory for using hosts/hostgroups configurations.",
-				Optional:            true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -178,16 +133,6 @@ func (r *SudoRuleHostMembershipResource) Create(ctx context.Context, req resourc
 	args := ipa.SudoruleAddHostArgs{
 		Cn: data.Name.ValueString(),
 	}
-	if !data.Host.IsNull() {
-		v := []string{data.Host.ValueString()}
-		optArgs.Host = &v
-		cmd_id = "srh"
-	}
-	if !data.HostGroup.IsNull() {
-		v := []string{data.HostGroup.ValueString()}
-		optArgs.Hostgroup = &v
-		cmd_id = "srhg"
-	}
 	if !data.Hosts.IsNull() || !data.HostGroups.IsNull() {
 		if !data.Hosts.IsNull() {
 			var v []string
@@ -217,17 +162,8 @@ func (r *SudoRuleHostMembershipResource) Create(ctx context.Context, req resourc
 		resp.Diagnostics.AddWarning("Client Warning", fmt.Sprintf("Warning creating freeipa sudo rule host membership: %v", _v.Failed))
 	}
 
-	switch cmd_id {
-	case "srh":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Host.ValueString())
-		data.Id = types.StringValue(id)
-	case "srhg":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.HostGroup.ValueString())
-		data.Id = types.StringValue(id)
-	case "msrh":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Identifier.ValueString())
-		data.Id = types.StringValue(id)
-	}
+	id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Identifier.ValueString())
+	data.Id = types.StringValue(id)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -243,7 +179,7 @@ func (r *SudoRuleHostMembershipResource) Read(ctx context.Context, req resource.
 		return
 	}
 
-	sudoruleId, typeId, cmdId, err := parseSudoRuleHostMembershipID(data.Id.ValueString())
+	sudoruleId, _, _, err := parseSudoRuleHostMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudorule_host_membership: %s", err))
@@ -271,55 +207,40 @@ func (r *SudoRuleHostMembershipResource) Read(ctx context.Context, req resource.
 		}
 	}
 
-	switch typeId {
-	case "srh":
-		if res.Result.MemberhostHost == nil || !isStringListContainsCaseInsensistive(res.Result.MemberhostHost, &cmdId) {
-			tflog.Debug(ctx, "[DEBUG] Sudo rule host membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "srhg":
-		if res.Result.MemberhostHostgroup == nil || !isStringListContainsCaseInsensistive(res.Result.MemberhostHostgroup, &cmdId) {
-			tflog.Debug(ctx, "[DEBUG] Sudo rule host group membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "msrh":
-		if !data.Hosts.IsNull() {
-			var changedVals []string
-			for _, value := range data.Hosts.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo host member failed with error %s", err))
-				}
-				if res.Result.MemberhostHost != nil && isStringListContainsCaseInsensistive(res.Result.MemberhostHost, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo host member %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+	if !data.Hosts.IsNull() {
+		var changedVals []string
+		for _, value := range data.Hosts.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo host member failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.Hosts, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberhostHost != nil && isStringListContainsCaseInsensistive(res.Result.MemberhostHost, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo host member %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if !data.HostGroups.IsNull() {
-			var changedVals []string
-			for _, value := range data.HostGroups.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo host member commands failed with error %s", err))
-				}
-				if res.Result.MemberhostHostgroup != nil && isStringListContainsCaseInsensistive(res.Result.MemberhostHostgroup, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo host member commands %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+		var diag diag.Diagnostics
+		data.Hosts, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	}
+	if !data.HostGroups.IsNull() {
+		var changedVals []string
+		for _, value := range data.HostGroups.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo host member commands failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.HostGroups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberhostHostgroup != nil && isStringListContainsCaseInsensistive(res.Result.MemberhostHostgroup, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo host member commands %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
+		}
+		var diag diag.Diagnostics
+		data.HostGroups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 		}
 	}
 
@@ -443,7 +364,7 @@ func (r *SudoRuleHostMembershipResource) Delete(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	cmdgrpId, typeId, _, err := parseSudoRuleHostMembershipID(data.Id.ValueString())
+	cmdgrpId, _, _, err := parseSudoRuleHostMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudo_rule_host_membership: %s", err))
@@ -456,30 +377,21 @@ func (r *SudoRuleHostMembershipResource) Delete(ctx context.Context, req resourc
 		Cn: cmdgrpId,
 	}
 
-	switch typeId {
-	case "srh":
-		v := []string{data.Host.ValueString()}
+	if !data.Hosts.IsNull() {
+		var v []string
+		for _, value := range data.Hosts.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Host = &v
-	case "srhg":
-		v := []string{data.HostGroup.ValueString()}
+	}
+	if !data.HostGroups.IsNull() {
+		var v []string
+		for _, value := range data.HostGroups.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Hostgroup = &v
-	case "msrh":
-		if !data.Hosts.IsNull() {
-			var v []string
-			for _, value := range data.Hosts.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Host = &v
-		}
-		if !data.HostGroups.IsNull() {
-			var v []string
-			for _, value := range data.HostGroups.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Hostgroup = &v
-		}
 	}
 
 	_, err = r.client.SudoruleRemoveHost(&args, &optArgs)

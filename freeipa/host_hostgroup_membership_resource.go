@@ -48,8 +48,6 @@ type HostGroupMembership struct {
 type HostGroupMembershipModel struct {
 	Id         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`
-	Host       types.String `tfsdk:"host"`
-	HostGroup  types.String `tfsdk:"hostgroup"`
 	Hosts      types.List   `tfsdk:"hosts"`
 	HostGroups types.List   `tfsdk:"hostgroups"`
 	Identifier types.String `tfsdk:"identifier"`
@@ -61,29 +59,7 @@ func (r *HostGroupMembership) Metadata(ctx context.Context, req resource.Metadat
 
 func (r *HostGroupMembership) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hostgroup"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hosts"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hostgroups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("hostgroup"),
-			path.MatchRoot("hosts"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("hostgroup"),
-			path.MatchRoot("hostgroups"),
-		),
 		resourcevalidator.AtLeastOneOf(
-			path.MatchRoot("host"),
-			path.MatchRoot("hostgroup"),
 			path.MatchRoot("hosts"),
 			path.MatchRoot("hostgroups"),
 		),
@@ -110,22 +86,6 @@ func (r *HostGroupMembership) Schema(ctx context.Context, req resource.SchemaReq
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"host": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Host to add. Will be replaced by hosts.",
-				DeprecationMessage:  "use hosts instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"hostgroup": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Hostgroup to add. Will be replaced by hostgroups.",
-				DeprecationMessage:  "use hostgroups instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"hosts": schema.ListAttribute{
 				MarkdownDescription: "Hosts to add as hostgroup members",
 				Optional:            true,
@@ -138,7 +98,7 @@ func (r *HostGroupMembership) Schema(ctx context.Context, req resource.SchemaReq
 			},
 			"identifier": schema.StringAttribute{
 				MarkdownDescription: "Unique identifier to differentiate multiple hostgroup membership resources on the same hostgroup. Manadatory for using hosts/hostgroups configurations.",
-				Optional:            true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -182,19 +142,6 @@ func (r *HostGroupMembership) Create(ctx context.Context, req resource.CreateReq
 
 	args := ipa.HostgroupAddMemberArgs{
 		Cn: data.Name.ValueString(),
-	}
-	if !data.Host.IsNull() {
-		v := []string{string(data.Host.ValueString())}
-		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Create hostgroup membership host %s", data.Host.ValueString()))
-		optArgs.Host = &v
-		data.Id = types.StringValue(fmt.Sprintf("%s/h/%s", data.Name.ValueString(), data.Host.ValueString()))
-
-	}
-	if !data.HostGroup.IsNull() {
-		v := []string{string(data.HostGroup.ValueString())}
-		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Create hostgroup membership hostgroup %s", data.HostGroup.ValueString()))
-		optArgs.Hostgroup = &v
-		data.Id = types.StringValue(fmt.Sprintf("%s/hg/%s", data.Name.ValueString(), data.HostGroup.ValueString()))
 	}
 	if !data.Hosts.IsNull() || !data.HostGroups.IsNull() {
 		if !data.Hosts.IsNull() {
@@ -244,7 +191,7 @@ func (r *HostGroupMembership) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	name, typeId, userId, err := parseHostgroupMembershipID(data.Id.ValueString())
+	name, _, _, err := parseHostgroupMembershipID(data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("State Error", fmt.Sprintf("Unable to parse resource %s: %s", data.Id.ValueString(), err))
 	}
@@ -268,74 +215,47 @@ func (r *HostGroupMembership) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	switch typeId {
-	case "hg":
-		if res.Result.MemberHostgroup != nil {
-			if isStringListContainsCaseInsensistive(res.Result.MemberHostgroup, &userId) {
-				data.HostGroup = types.StringValue(userId)
-			} else {
-				data.HostGroup = types.StringValue("")
-				data.Id = types.StringValue("")
+	if !data.Hosts.IsNull() && res.Result.MemberHost != nil {
+		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hosts %v", *res.Result.MemberHost))
+		var changedVals []string
+		for _, value := range data.Hosts.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hosts failed with error %s", err))
 			}
-		} else {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "h":
-		if res.Result.MemberHost != nil {
-			if isStringListContainsCaseInsensistive(res.Result.MemberHost, &userId) {
-				data.Host = types.StringValue(userId)
-			} else {
-				data.Host = types.StringValue("")
-				data.Id = types.StringValue("")
-			}
-		} else {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "m":
-		if !data.Hosts.IsNull() && res.Result.MemberHost != nil {
-			tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hosts %v", *res.Result.MemberHost))
-			var changedVals []string
-			for _, value := range data.Hosts.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hosts failed with error %s", err))
-				}
-				if isStringListContainsCaseInsensistive(res.Result.MemberHost, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hosts %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
-			}
-			var diag diag.Diagnostics
-			data.Hosts, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if isStringListContainsCaseInsensistive(res.Result.MemberHost, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hosts %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if !data.HostGroups.IsNull() && res.Result.MemberHostgroup != nil {
-			tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hostgroups %v", *res.Result.MemberHostgroup))
-			var changedVals []string
-			for _, value := range data.HostGroups.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hostgroups failed with error %s", err))
-				}
-				if isStringListContainsCaseInsensistive(res.Result.MemberHostgroup, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hostgroups %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+		var diag diag.Diagnostics
+		data.Hosts, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	}
+	if !data.HostGroups.IsNull() && res.Result.MemberHostgroup != nil {
+		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hostgroups %v", *res.Result.MemberHostgroup))
+		var changedVals []string
+		for _, value := range data.HostGroups.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hostgroups failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.HostGroups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if isStringListContainsCaseInsensistive(res.Result.MemberHostgroup, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hostgroup member hostgroups %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if res.Result.MemberHostgroup == nil && res.Result.MemberHost == nil {
-			resp.State.RemoveResource(ctx)
-			return
+		var diag diag.Diagnostics
+		data.HostGroups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 		}
+	}
+	if res.Result.MemberHostgroup == nil && res.Result.MemberHost == nil {
+		resp.State.RemoveResource(ctx)
+		return
 	}
 
 	// Save updated data into Terraform state
@@ -463,7 +383,7 @@ func (r *HostGroupMembership) Delete(ctx context.Context, req resource.DeleteReq
 
 	optArgs := ipa.HostgroupRemoveMemberOptionalArgs{}
 
-	nameId, typeId, userId, err := parseHostgroupMembershipID(data.Id.ValueString())
+	nameId, _, _, err := parseHostgroupMembershipID(data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_host_hostgroup_membership %s: %s", data.Id.ValueString(), err))
 
@@ -473,32 +393,23 @@ func (r *HostGroupMembership) Delete(ctx context.Context, req resource.DeleteReq
 		Cn: nameId,
 	}
 
-	switch typeId {
-	case "hg":
-		v := []string{userId}
-		optArgs.Hostgroup = &v
-	case "h":
-		v := []string{userId}
+	tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Delete freeipa hostgroup member hosts %v ", data.Hosts))
+	tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Delete freeipa hostgroup member hostgroups %v ", data.HostGroups))
+	if !data.Hosts.IsNull() {
+		var v []string
+		for _, value := range data.Hosts.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Host = &v
-	case "m":
-		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Delete freeipa hostgroup member hosts %v ", data.Hosts))
-		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Delete freeipa hostgroup member hostgroups %v ", data.HostGroups))
-		if !data.Hosts.IsNull() {
-			var v []string
-			for _, value := range data.Hosts.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Host = &v
+	}
+	if !data.HostGroups.IsNull() {
+		var v []string
+		for _, value := range data.HostGroups.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
 		}
-		if !data.HostGroups.IsNull() {
-			var v []string
-			for _, value := range data.HostGroups.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Hostgroup = &v
-		}
+		optArgs.Hostgroup = &v
 	}
 
 	if resp.Diagnostics.HasError() {

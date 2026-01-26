@@ -12,166 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
-func TestAccFreeIPASudoRuleAllowCmdMembership_simple(t *testing.T) {
-	testSudoCmd1 := map[string]string{
-		"index":       "1",
-		"name":        "\"/usr/bin/testacc-bash\"",
-		"description": "\"The bash shell\"",
-	}
-	testSudoCmdGrp := map[string]string{
-		"index":       "1",
-		"name":        "\"testacc-terminals\"",
-		"description": "\"A set of terminals\"",
-	}
-	testSudoCmdGrpMembership := map[string]string{
-		"index":   "1",
-		"name":    "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-		"sudocmd": "freeipa_sudo_cmd.sudocmd-1.name",
-	}
-	testSudoRule := map[string]string{
-		"index":       "1",
-		"name":        "\"testacc-sudorule\"",
-		"description": "\"A sudo rule for acceptance tests\"",
-	}
-	testSudoAllowCmdMembership := map[string]string{
-		"index":   "1",
-		"name":    "freeipa_sudo_rule.sudorule-1.name",
-		"sudocmd": "freeipa_sudo_cmd.sudocmd-1.name",
-	}
-	testSudoAllowCmdGrpMembership := map[string]string{
-		"index":         "2",
-		"name":          "freeipa_sudo_rule.sudorule-1.name",
-		"sudocmd_group": "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-	}
-	testSudoDS := map[string]string{
-		"index": "1",
-		"name":  "freeipa_sudo_rule.sudorule-1.name",
-	}
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPASudoCmd_resource(testSudoCmd1) + testAccFreeIPASudoCmdGrp_resource(testSudoCmdGrp) + testAccFreeIPASudoCmdGrpMembership_resource(testSudoCmdGrpMembership) + testAccFreeIPASudoRule_resource(testSudoRule) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdMembership) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdGrpMembership),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("freeipa_sudo_cmd.sudocmd-1", "name", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmd.sudocmd-1", "description", "The bash shell"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup.sudocmdgroup-1", "name", "testacc-terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup.sudocmdgroup-1", "description", "A set of terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "name", "testacc-terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "sudocmd", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule.sudorule-1", "name", "testacc-sudorule"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule.sudorule-1", "description", "A sudo rule for acceptance tests"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule_allowcmd_membership.sudo-allow-membership-1", "name", "testacc-sudorule"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule_allowcmd_membership.sudo-allow-membership-1", "sudocmd", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule_allowcmd_membership.sudo-allow-membership-2", "name", "testacc-sudorule"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule_allowcmd_membership.sudo-allow-membership-2", "sudocmd_group", "testacc-terminals"),
-				),
-			},
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPASudoCmd_resource(testSudoCmd1) + testAccFreeIPASudoCmdGrp_resource(testSudoCmdGrp) + testAccFreeIPASudoCmdGrpMembership_resource(testSudoCmdGrpMembership) + testAccFreeIPASudoRule_resource(testSudoRule) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdMembership) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdGrpMembership) + testAccFreeIPASudoRule_datasource(testSudoDS),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "name", "testacc-sudorule"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "description", "A sudo rule for acceptance tests"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "member_allow_sudo_cmd.#", "1"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "member_allow_sudo_cmd.0", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "member_allow_sudo_cmdgroup.#", "1"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "member_allow_sudo_cmdgroup.0", "testacc-terminals"),
-				),
-			},
-		},
-	})
-}
-
-func TestAccFreeIPASudoRuleAllowCmdMembership_CaseInsensitive(t *testing.T) {
-	testSudoCmd1 := map[string]string{
-		"index":       "1",
-		"name":        "\"/usr/bin/testacc-bash\"",
-		"description": "\"The bash shell\"",
-	}
-	testSudoCmdGrp := map[string]string{
-		"index":       "1",
-		"name":        "\"Testacc Terminals\"",
-		"description": "\"A set of terminals\"",
-	}
-	testSudoCmdGrpMembership := map[string]string{
-		"index":   "1",
-		"name":    "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-		"sudocmd": "freeipa_sudo_cmd.sudocmd-1.name",
-	}
-	testSudoRule := map[string]string{
-		"index":       "1",
-		"name":        "\"testacc-sudorule\"",
-		"description": "\"A sudo rule for acceptance tests\"",
-	}
-	testSudoAllowCmdMembership := map[string]string{
-		"index":   "1",
-		"name":    "freeipa_sudo_rule.sudorule-1.name",
-		"sudocmd": "freeipa_sudo_cmd.sudocmd-1.name",
-	}
-	testSudoAllowCmdGrpMembership := map[string]string{
-		"index":         "2",
-		"name":          "freeipa_sudo_rule.sudorule-1.name",
-		"sudocmd_group": "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-	}
-	testSudoDS := map[string]string{
-		"index": "1",
-		"name":  "freeipa_sudo_rule.sudorule-1.name",
-	}
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPASudoCmd_resource(testSudoCmd1) + testAccFreeIPASudoCmdGrp_resource(testSudoCmdGrp) + testAccFreeIPASudoCmdGrpMembership_resource(testSudoCmdGrpMembership) + testAccFreeIPASudoRule_resource(testSudoRule) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdMembership) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdGrpMembership),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("freeipa_sudo_cmd.sudocmd-1", "name", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmd.sudocmd-1", "description", "The bash shell"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup.sudocmdgroup-1", "name", "Testacc Terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup.sudocmdgroup-1", "description", "A set of terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "name", "Testacc Terminals"),
-					resource.TestCheckResourceAttr("freeipa_sudo_cmdgroup_membership.sudocmdgroup-membership-1", "sudocmd", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule.sudorule-1", "name", "testacc-sudorule"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule.sudorule-1", "description", "A sudo rule for acceptance tests"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule_allowcmd_membership.sudo-allow-membership-1", "name", "testacc-sudorule"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule_allowcmd_membership.sudo-allow-membership-1", "sudocmd", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule_allowcmd_membership.sudo-allow-membership-2", "name", "testacc-sudorule"),
-					resource.TestCheckResourceAttr("freeipa_sudo_rule_allowcmd_membership.sudo-allow-membership-2", "sudocmd_group", "Testacc Terminals"),
-				),
-			},
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPASudoCmd_resource(testSudoCmd1) + testAccFreeIPASudoCmdGrp_resource(testSudoCmdGrp) + testAccFreeIPASudoCmdGrpMembership_resource(testSudoCmdGrpMembership) + testAccFreeIPASudoRule_resource(testSudoRule) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdMembership) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdGrpMembership),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectEmptyPlan(),
-					},
-				},
-			},
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPASudoCmd_resource(testSudoCmd1) + testAccFreeIPASudoCmdGrp_resource(testSudoCmdGrp) + testAccFreeIPASudoCmdGrpMembership_resource(testSudoCmdGrpMembership) + testAccFreeIPASudoRule_resource(testSudoRule) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdMembership) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdGrpMembership) + testAccFreeIPASudoRule_datasource(testSudoDS),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "name", "testacc-sudorule"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "description", "A sudo rule for acceptance tests"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "member_allow_sudo_cmd.#", "1"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "member_allow_sudo_cmd.0", "/usr/bin/testacc-bash"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "member_allow_sudo_cmdgroup.#", "1"),
-					resource.TestCheckResourceAttr("data.freeipa_sudo_rule.sudorule-1", "member_allow_sudo_cmdgroup.0", "testacc terminals"),
-				),
-			},
-			{
-				Config: testAccFreeIPAProvider() + testAccFreeIPASudoCmd_resource(testSudoCmd1) + testAccFreeIPASudoCmdGrp_resource(testSudoCmdGrp) + testAccFreeIPASudoCmdGrpMembership_resource(testSudoCmdGrpMembership) + testAccFreeIPASudoRule_resource(testSudoRule) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdMembership) + testAccFreeIPASudoAllowCmdMembership_resource(testSudoAllowCmdGrpMembership) + testAccFreeIPASudoRule_datasource(testSudoDS),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectEmptyPlan(),
-					},
-				},
-			},
-		},
-	})
-}
-
 func TestAccFreeIPASudoRuleAllowCmdMembership_mutiple(t *testing.T) {
 	testSudoCmd1 := map[string]string{
 		"index":       "1",
@@ -194,10 +34,10 @@ func TestAccFreeIPASudoRuleAllowCmdMembership_mutiple(t *testing.T) {
 		"description": "\"A set of terminals\"",
 	}
 	testSudoCmdGrpMembership := map[string]string{
-		"index":       "1",
-		"name":        "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-		"sudocmds":    "[freeipa_sudo_cmd.sudocmd-1.name,freeipa_sudo_cmd.sudocmd-2.name,freeipa_sudo_cmd.sudocmd-3.name]",
-		"indentifier": "multiplecmds",
+		"index":      "1",
+		"name":       "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
+		"sudocmds":   "[freeipa_sudo_cmd.sudocmd-1.name,freeipa_sudo_cmd.sudocmd-2.name,freeipa_sudo_cmd.sudocmd-3.name]",
+		"identifier": "\"multiplecmds\"",
 	}
 	testSudoRule := map[string]string{
 		"index":       "1",
@@ -300,10 +140,10 @@ func TestAccFreeIPASudoRuleAllowCmdMembership_multiple_CaseInsensitive(t *testin
 		"description": "\"A set of services\"",
 	}
 	testSudoCmdGrpMembership := map[string]string{
-		"index":       "1",
-		"name":        "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
-		"sudocmds":    "[freeipa_sudo_cmd.sudocmd-1.name,freeipa_sudo_cmd.sudocmd-2.name,freeipa_sudo_cmd.sudocmd-3.name]",
-		"indentifier": "multiplecmds",
+		"index":      "1",
+		"name":       "freeipa_sudo_cmdgroup.sudocmdgroup-1.name",
+		"sudocmds":   "[freeipa_sudo_cmd.sudocmd-1.name,freeipa_sudo_cmd.sudocmd-2.name,freeipa_sudo_cmd.sudocmd-3.name]",
+		"identifier": "\"multiplecmds\"",
 	}
 	testSudoRule := map[string]string{
 		"index":       "1",

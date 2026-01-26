@@ -19,9 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -48,40 +46,13 @@ type SudoRuleUserMembershipResource struct {
 type SudoRuleUserMembershipResourceModel struct {
 	Id         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`
-	User       types.String `tfsdk:"user"`
 	Users      types.List   `tfsdk:"users"`
-	Group      types.String `tfsdk:"group"`
 	Groups     types.List   `tfsdk:"groups"`
 	Identifier types.String `tfsdk:"identifier"`
 }
 
 func (r *SudoRuleUserMembershipResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_sudo_rule_user_membership"
-}
-
-func (r *SudoRuleUserMembershipResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("users"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("group"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("groups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("group"),
-			path.MatchRoot("users"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("group"),
-			path.MatchRoot("groups"),
-		),
-	}
 }
 
 func (r *SudoRuleUserMembershipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -104,26 +75,10 @@ func (r *SudoRuleUserMembershipResource) Schema(ctx context.Context, req resourc
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"user": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** User to add to the sudo rule",
-				DeprecationMessage:  "use users instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"users": schema.ListAttribute{
 				MarkdownDescription: "List of users to add to the sudo rule",
 				Optional:            true,
 				ElementType:         types.StringType,
-			},
-			"group": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** User group to add to the sudo rule",
-				DeprecationMessage:  "use groups instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"groups": schema.ListAttribute{
 				MarkdownDescription: "List of user groups to add to the sudo rule",
@@ -178,16 +133,6 @@ func (r *SudoRuleUserMembershipResource) Create(ctx context.Context, req resourc
 	args := ipa.SudoruleAddUserArgs{
 		Cn: data.Name.ValueString(),
 	}
-	if !data.User.IsNull() {
-		v := []string{data.User.ValueString()}
-		optArgs.User = &v
-		cmd_id = "sru"
-	}
-	if !data.Group.IsNull() {
-		v := []string{data.Group.ValueString()}
-		optArgs.Group = &v
-		cmd_id = "srug"
-	}
 	if !data.Users.IsNull() || !data.Groups.IsNull() {
 		if !data.Users.IsNull() {
 			var v []string
@@ -217,17 +162,8 @@ func (r *SudoRuleUserMembershipResource) Create(ctx context.Context, req resourc
 		resp.Diagnostics.AddWarning("Client Warning", fmt.Sprintf("Warning creating freeipa sudo rule user membership: %v", _v.Failed))
 	}
 
-	switch cmd_id {
-	case "sru":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.User.ValueString())
-		data.Id = types.StringValue(id)
-	case "srug":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Group.ValueString())
-		data.Id = types.StringValue(id)
-	case "msru":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Identifier.ValueString())
-		data.Id = types.StringValue(id)
-	}
+	id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Identifier.ValueString())
+	data.Id = types.StringValue(id)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -243,7 +179,7 @@ func (r *SudoRuleUserMembershipResource) Read(ctx context.Context, req resource.
 		return
 	}
 
-	sudoruleId, typeId, cmdId, err := parseSudoRuleUserMembershipID(data.Id.ValueString())
+	sudoruleId, _, _, err := parseSudoRuleUserMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudorule_user_membership: %s", err))
@@ -271,57 +207,44 @@ func (r *SudoRuleUserMembershipResource) Read(ctx context.Context, req resource.
 		}
 	}
 
-	switch typeId {
-	case "sru":
-		if res.Result.MemberuserUser == nil || !isStringListContainsCaseInsensistive(res.Result.MemberuserUser, &cmdId) {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "srug":
-		if res.Result.MemberuserGroup == nil || !isStringListContainsCaseInsensistive(res.Result.MemberuserGroup, &cmdId) {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "msru":
-		if res.Result.MemberuserUser == nil && res.Result.MemberuserGroup == nil {
-			resp.State.RemoveResource(ctx)
-			return
-		} else {
-			if !data.Users.IsNull() {
-				var changedVals []string
-				for _, value := range data.Users.Elements() {
-					val, err := strconv.Unquote(value.String())
-					if err != nil {
-						tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo user member failed with error %s", err))
-					}
-					if res.Result.MemberuserUser != nil && isStringListContainsCaseInsensistive(res.Result.MemberuserUser, &val) {
-						tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo user member %s is present in results", val))
-						changedVals = append(changedVals, val)
-					}
+	if res.Result.MemberuserUser == nil && res.Result.MemberuserGroup == nil {
+		resp.State.RemoveResource(ctx)
+		return
+	} else {
+		if !data.Users.IsNull() {
+			var changedVals []string
+			for _, value := range data.Users.Elements() {
+				val, err := strconv.Unquote(value.String())
+				if err != nil {
+					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo user member failed with error %s", err))
 				}
-				var diag diag.Diagnostics
-				data.Users, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-				if diag.HasError() {
-					resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+				if res.Result.MemberuserUser != nil && isStringListContainsCaseInsensistive(res.Result.MemberuserUser, &val) {
+					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo user member %s is present in results", val))
+					changedVals = append(changedVals, val)
 				}
 			}
-			if !data.Groups.IsNull() && res.Result.MemberuserGroup == nil {
-				var changedVals []string
-				for _, value := range data.Groups.Elements() {
-					val, err := strconv.Unquote(value.String())
-					if err != nil {
-						tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo user group member failed with error %s", err))
-					}
-					if isStringListContainsCaseInsensistive(res.Result.MemberuserGroup, &val) {
-						tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo user group member %s is present in results", val))
-						changedVals = append(changedVals, val)
-					}
+			var diag diag.Diagnostics
+			data.Users, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+			if diag.HasError() {
+				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			}
+		}
+		if !data.Groups.IsNull() && res.Result.MemberuserGroup == nil {
+			var changedVals []string
+			for _, value := range data.Groups.Elements() {
+				val, err := strconv.Unquote(value.String())
+				if err != nil {
+					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo user group member failed with error %s", err))
 				}
-				var diag diag.Diagnostics
-				data.Groups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-				if diag.HasError() {
-					resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+				if isStringListContainsCaseInsensistive(res.Result.MemberuserGroup, &val) {
+					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo user group member %s is present in results", val))
+					changedVals = append(changedVals, val)
 				}
+			}
+			var diag diag.Diagnostics
+			data.Groups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+			if diag.HasError() {
+				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 			}
 		}
 	}
@@ -446,7 +369,7 @@ func (r *SudoRuleUserMembershipResource) Delete(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	sudoRuleId, typeId, _, err := parseSudoRuleUserMembershipID(data.Id.ValueString())
+	sudoRuleId, _, _, err := parseSudoRuleUserMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudo_rule_user_membership: %s", err))
@@ -459,30 +382,21 @@ func (r *SudoRuleUserMembershipResource) Delete(ctx context.Context, req resourc
 		Cn: sudoRuleId,
 	}
 
-	switch typeId {
-	case "sru":
-		v := []string{data.User.ValueString()}
+	if !data.Users.IsNull() {
+		var v []string
+		for _, value := range data.Users.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.User = &v
-	case "srug":
-		v := []string{data.Group.ValueString()}
+	}
+	if !data.Groups.IsNull() {
+		var v []string
+		for _, value := range data.Groups.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Group = &v
-	case "msru":
-		if !data.Users.IsNull() {
-			var v []string
-			for _, value := range data.Users.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.User = &v
-		}
-		if !data.Groups.IsNull() {
-			var v []string
-			for _, value := range data.Groups.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Group = &v
-		}
 	}
 
 	_, err = r.client.SudoruleRemoveUser(&args, &optArgs)

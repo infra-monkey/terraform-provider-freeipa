@@ -19,9 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -48,22 +46,12 @@ type SudoCmdGroupMembershipResource struct {
 type SudoCmdGroupMembershipResourceModel struct {
 	Id         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`
-	SudoCmd    types.String `tfsdk:"sudocmd"`
 	SudoCmds   types.List   `tfsdk:"sudocmds"`
 	Identifier types.String `tfsdk:"identifier"`
 }
 
 func (r *SudoCmdGroupMembershipResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_sudo_cmdgroup_membership"
-}
-
-func (r *SudoCmdGroupMembershipResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("sudocmd"),
-			path.MatchRoot("sudocmds"),
-		),
-	}
 }
 
 func (r *SudoCmdGroupMembershipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -86,22 +74,14 @@ func (r *SudoCmdGroupMembershipResource) Schema(ctx context.Context, req resourc
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"sudocmd": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Sudo command to add as a member",
-				DeprecationMessage:  "use sudocmds instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"sudocmds": schema.ListAttribute{
 				MarkdownDescription: "List of sudo command to add as a member",
-				Optional:            true,
+				Required:            true,
 				ElementType:         types.StringType,
 			},
 			"identifier": schema.StringAttribute{
 				MarkdownDescription: "Unique identifier to differentiate multiple sudo command group membership resources on the same sudo command group. Manadatory for using sudocmds configurations.",
-				Optional:            true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -147,12 +127,6 @@ func (r *SudoCmdGroupMembershipResource) Create(ctx context.Context, req resourc
 	args := ipa.SudocmdgroupAddMemberArgs{
 		Cn: data.Name.ValueString(),
 	}
-
-	if !data.SudoCmd.IsNull() {
-		v := []string{data.SudoCmd.ValueString()}
-		optArgs.Sudocmd = &v
-		id = fmt.Sprintf("%s/sc/%s", encodeSlash(data.Name.ValueString()), data.SudoCmd.ValueString())
-	}
 	if !data.SudoCmds.IsNull() {
 		var v []string
 		for _, value := range data.SudoCmds.Elements() {
@@ -189,7 +163,7 @@ func (r *SudoCmdGroupMembershipResource) Read(ctx context.Context, req resource.
 		return
 	}
 
-	cmdgrpId, typeId, cmdId, err := parseSudocmdgroupMembershipID(data.Id.ValueString())
+	cmdgrpId, _, _, err := parseSudocmdgroupMembershipID(data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudocmdgroup_membership: %s", err))
 		return
@@ -216,35 +190,26 @@ func (r *SudoCmdGroupMembershipResource) Read(ctx context.Context, req resource.
 		}
 	}
 
-	switch typeId {
-	case "sc":
-		if res.Result.MemberSudocmd == nil || !slices.Contains(*res.Result.MemberSudocmd, cmdId) {
-			tflog.Debug(ctx, "[DEBUG] Sudo command group membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "msc":
-		if !data.SudoCmds.IsNull() {
-			var changedVals []string
-			for _, value := range data.SudoCmds.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command group member commands failed with error %s", err))
-				}
-				if res.Result.MemberSudocmd != nil && slices.Contains(*res.Result.MemberSudocmd, val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command group member commands %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+	if !data.SudoCmds.IsNull() {
+		var changedVals []string
+		for _, value := range data.SudoCmds.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command group member commands failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.SudoCmds, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberSudocmd != nil && slices.Contains(*res.Result.MemberSudocmd, val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command group member commands %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
-		} else {
-			resp.State.RemoveResource(ctx)
-			return
 		}
+		var diag diag.Diagnostics
+		data.SudoCmds, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	} else {
+		resp.State.RemoveResource(ctx)
+		return
 	}
 
 	// Save updated data into Terraform state
@@ -342,7 +307,7 @@ func (r *SudoCmdGroupMembershipResource) Delete(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	cmdgrpId, typeId, cmdId, err := parseSudocmdgroupMembershipID(data.Id.ValueString())
+	cmdgrpId, _, _, err := parseSudocmdgroupMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudocmdgroup_membership: %s", err))
@@ -355,19 +320,13 @@ func (r *SudoCmdGroupMembershipResource) Delete(ctx context.Context, req resourc
 		Cn: cmdgrpId,
 	}
 
-	switch typeId {
-	case "sc":
-		v := []string{cmdId}
-		optArgs.Sudocmd = &v
-	case "msc":
-		if !data.SudoCmds.IsNull() {
-			var v []string
-			for _, value := range data.SudoCmds.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Sudocmd = &v
+	if !data.SudoCmds.IsNull() {
+		var v []string
+		for _, value := range data.SudoCmds.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
 		}
+		optArgs.Sudocmd = &v
 	}
 
 	_, err = r.client.SudocmdgroupRemoveMember(&args, &optArgs)

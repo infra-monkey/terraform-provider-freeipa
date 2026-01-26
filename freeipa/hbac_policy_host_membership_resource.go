@@ -19,9 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -48,40 +46,13 @@ type HbacPolicyHostMembershipResource struct {
 type HbacPolicyHostMembershipResourceModel struct {
 	Id         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`
-	Host       types.String `tfsdk:"host"`
 	Hosts      types.List   `tfsdk:"hosts"`
-	HostGroup  types.String `tfsdk:"hostgroup"`
 	HostGroups types.List   `tfsdk:"hostgroups"`
 	Identifier types.String `tfsdk:"identifier"`
 }
 
 func (r *HbacPolicyHostMembershipResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_hbac_policy_host_membership"
-}
-
-func (r *HbacPolicyHostMembershipResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hosts"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hostgroup"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("host"),
-			path.MatchRoot("hostgroups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("hostgroup"),
-			path.MatchRoot("hosts"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("hostgroup"),
-			path.MatchRoot("hostgroups"),
-		),
-	}
 }
 
 func (r *HbacPolicyHostMembershipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -104,26 +75,10 @@ func (r *HbacPolicyHostMembershipResource) Schema(ctx context.Context, req resou
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"host": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Host to add to the HBAC policy",
-				DeprecationMessage:  "use hosts instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"hosts": schema.ListAttribute{
 				MarkdownDescription: "List of hosts to add to the HBAC policy",
 				Optional:            true,
 				ElementType:         types.StringType,
-			},
-			"hostgroup": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Hostgroup to add to the HBAC policy",
-				DeprecationMessage:  "use hostgroups instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"hostgroups": schema.ListAttribute{
 				MarkdownDescription: "List of hostgroups to add to the HBAC policy",
@@ -132,7 +87,7 @@ func (r *HbacPolicyHostMembershipResource) Schema(ctx context.Context, req resou
 			},
 			"identifier": schema.StringAttribute{
 				MarkdownDescription: "Unique identifier to differentiate multiple HBAC policy host membership resources on the same HBAC policy. Manadatory for using hosts/hostgroups configurations.",
-				Optional:            true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -164,7 +119,7 @@ func (r *HbacPolicyHostMembershipResource) Configure(ctx context.Context, req re
 
 func (r *HbacPolicyHostMembershipResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data HbacPolicyHostMembershipResourceModel
-	var id, cmd_id string
+	var id string
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -177,16 +132,6 @@ func (r *HbacPolicyHostMembershipResource) Create(ctx context.Context, req resou
 
 	args := ipa.HbacruleAddHostArgs{
 		Cn: data.Name.ValueString(),
-	}
-	if !data.Host.IsNull() {
-		v := []string{data.Host.ValueString()}
-		optArgs.Host = &v
-		cmd_id = "h"
-	}
-	if !data.HostGroup.IsNull() {
-		v := []string{data.HostGroup.ValueString()}
-		optArgs.Hostgroup = &v
-		cmd_id = "hg"
 	}
 	if !data.Hosts.IsNull() || !data.HostGroups.IsNull() {
 		if !data.Hosts.IsNull() {
@@ -205,8 +150,11 @@ func (r *HbacPolicyHostMembershipResource) Create(ctx context.Context, req resou
 			}
 			optArgs.Hostgroup = &v
 		}
-		cmd_id = "mh"
 	}
+
+	// Keep id format for upgrade compatibility
+	id = fmt.Sprintf("%s/mh/%s", encodeSlash(data.Name.ValueString()), data.Identifier.ValueString())
+	data.Id = types.StringValue(id)
 
 	_v, err := r.client.HbacruleAddHost(&args, &optArgs)
 	if err != nil {
@@ -215,18 +163,6 @@ func (r *HbacPolicyHostMembershipResource) Create(ctx context.Context, req resou
 	}
 	if _v.Completed == 0 {
 		resp.Diagnostics.AddWarning("Client Warning", fmt.Sprintf("Warning creating freeipa sudo rule host membership: %v", _v.Failed))
-	}
-
-	switch cmd_id {
-	case "h":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Host.ValueString())
-		data.Id = types.StringValue(id)
-	case "hg":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.HostGroup.ValueString())
-		data.Id = types.StringValue(id)
-	case "mh":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Identifier.ValueString())
-		data.Id = types.StringValue(id)
 	}
 
 	// Save data into Terraform state
@@ -457,12 +393,6 @@ func (r *HbacPolicyHostMembershipResource) Delete(ctx context.Context, req resou
 	}
 
 	switch typeId {
-	case "h":
-		v := []string{data.Host.ValueString()}
-		optArgs.Host = &v
-	case "hg":
-		v := []string{data.HostGroup.ValueString()}
-		optArgs.Hostgroup = &v
 	case "mh":
 		if !data.Hosts.IsNull() {
 			var v []string

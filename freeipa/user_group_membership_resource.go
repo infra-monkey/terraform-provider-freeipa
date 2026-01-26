@@ -50,9 +50,6 @@ type userGroupMembership struct {
 type userGroupMembershipModel struct {
 	Id              types.String `tfsdk:"id"`
 	Name            types.String `tfsdk:"name"`
-	User            types.String `tfsdk:"user"`
-	Group           types.String `tfsdk:"group"`
-	ExternalMember  types.String `tfsdk:"external_member"`
 	Users           types.List   `tfsdk:"users"`
 	Groups          types.List   `tfsdk:"groups"`
 	ExternalMembers types.List   `tfsdk:"external_members"`
@@ -65,58 +62,7 @@ func (r *userGroupMembership) Metadata(ctx context.Context, req resource.Metadat
 
 func (r *userGroupMembership) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("group"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("external_member"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("group"),
-			path.MatchRoot("external_member"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("users"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("groups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("external_members"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("group"),
-			path.MatchRoot("users"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("group"),
-			path.MatchRoot("groups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("group"),
-			path.MatchRoot("external_members"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("external_member"),
-			path.MatchRoot("users"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("external_member"),
-			path.MatchRoot("groups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("external_member"),
-			path.MatchRoot("external_members"),
-		),
 		resourcevalidator.AtLeastOneOf(
-			path.MatchRoot("user"),
-			path.MatchRoot("group"),
-			path.MatchRoot("external_member"),
 			path.MatchRoot("users"),
 			path.MatchRoot("groups"),
 			path.MatchRoot("external_members"),
@@ -140,30 +86,6 @@ func (r *userGroupMembership) Schema(ctx context.Context, req resource.SchemaReq
 			"name": schema.StringAttribute{
 				MarkdownDescription: "Group name",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"user": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** User to add. Will be replaced by users.",
-				DeprecationMessage:  "use users instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"group": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** User group to add. Will be replaced by groups.",
-				DeprecationMessage:  "use groups instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"external_member": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** External member to add. name must refer to an external group. (Requires a valid AD Trust configuration).. Will be replaced by external_members.",
-				DeprecationMessage:  "use external_members instead",
-				Optional:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -230,24 +152,6 @@ func (r *userGroupMembership) Create(ctx context.Context, req resource.CreateReq
 	args := ipa.GroupAddMemberArgs{
 		Cn: data.Name.ValueString(),
 	}
-	if !data.User.IsNull() {
-		v := []string{string(data.User.ValueString())}
-		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Create user group membership user %s", data.User.ValueString()))
-		optArgs.User = &v
-		data.Id = types.StringValue(fmt.Sprintf("%s/u/%s", data.Name.ValueString(), data.User.ValueString()))
-
-	}
-	if !data.Group.IsNull() {
-		v := []string{string(data.Group.ValueString())}
-		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Create user group membership group %s", data.Group.ValueString()))
-		optArgs.Group = &v
-		data.Id = types.StringValue(fmt.Sprintf("%s/g/%s", data.Name.ValueString(), data.Group.ValueString()))
-	}
-	if !data.ExternalMember.IsNull() {
-		v := []string{string(data.ExternalMember.ValueString())}
-		optArgs.Ipaexternalmember = &v
-		data.Id = types.StringValue(fmt.Sprintf("%s/e/%s", data.Name.ValueString(), data.ExternalMember.ValueString()))
-	}
 	if !data.Users.IsNull() || !data.Groups.IsNull() || !data.ExternalMembers.IsNull() {
 		if !data.Users.IsNull() {
 			var v []string
@@ -290,28 +194,6 @@ func (r *userGroupMembership) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddWarning("Client Warning", fmt.Sprintf("Warning creating freeipa user group membership: %v", _v.Failed))
 	}
 
-	if !data.ExternalMember.IsNull() {
-		v := []string{string(data.ExternalMember.ValueString())}
-		z := new(bool)
-		*z = true
-		groupRes, err := r.client.GroupShow(&ipa.GroupShowArgs{Cn: data.Name.ValueString()}, &ipa.GroupShowOptionalArgs{All: z})
-		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] group show return is %s", groupRes.Result.String()))
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error looking up freeipa user group membership: %s", err))
-			return
-		}
-		if !slices.Contains(*groupRes.Result.Ipaexternalmember, data.ExternalMember.ValueString()) {
-			_, err = r.client.GroupRemoveMember(&ipa.GroupRemoveMemberArgs{Cn: data.Name.ValueString()}, &ipa.GroupRemoveMemberOptionalArgs{Ipaexternalmember: &v})
-			if err != nil {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error deleting invalid freeipa user group membership: %s", err))
-				return
-			}
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("external member is not using the correct format. Use the lowercase upn format (ie: 'domain users@domain.net'): %s", data.ExternalMember.ValueString()))
-			return
-		} else {
-			tflog.Debug(ctx, fmt.Sprintf("[DEBUG] group show %s is %v", data.Name.ValueString(), groupRes.Result.String()))
-		}
-	}
 	if !data.ExternalMembers.IsNull() {
 		z := new(bool)
 		*z = true
@@ -352,7 +234,7 @@ func (r *userGroupMembership) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	name, typeId, userId, err := parseUserMembershipID(data.Id.ValueString())
+	name, _, _, err := parseUserMembershipID(data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("State Error", fmt.Sprintf("Unable to parse resource %s: %s", data.Id.ValueString(), err))
 	}
@@ -377,108 +259,66 @@ func (r *userGroupMembership) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	switch typeId {
-	case "g":
-		if res.Result.MemberGroup != nil {
-			if isStringListContainsCaseInsensistive(res.Result.MemberGroup, &userId) {
-				data.Group = types.StringValue(userId)
-			} else {
-				data.Group = types.StringValue("")
-				data.Id = types.StringValue("")
+	if !data.Users.IsNull() && res.Result.MemberUser != nil {
+		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member users %v", *res.Result.MemberUser))
+		var changedVals []string
+		for _, value := range data.Users.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member users failed with error %s", err))
 			}
-		} else {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "u":
-		if res.Result.MemberUser != nil {
-			if isStringListContainsCaseInsensistive(res.Result.MemberUser, &userId) {
-				data.User = types.StringValue(userId)
-			} else {
-				data.User = types.StringValue("")
-				data.Id = types.StringValue("")
-			}
-		} else {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "e":
-		v := []string{userId}
-
-		if res.Result.Ipaexternalmember != nil {
-			extmembers := *res.Result.Ipaexternalmember
-			if slices.Contains(extmembers, v[0]) {
-				data.ExternalMember = types.StringValue(v[0])
-			} else {
-				data.ExternalMember = types.StringValue("")
-				data.Id = types.StringValue("")
-			}
-		} else {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "m":
-		if !data.Users.IsNull() && res.Result.MemberUser != nil {
-			tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member users %v", *res.Result.MemberUser))
-			var changedVals []string
-			for _, value := range data.Users.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member users failed with error %s", err))
-				}
-				if isStringListContainsCaseInsensistive(res.Result.MemberUser, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member users %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
-			}
-			var diag diag.Diagnostics
-			data.Users, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if isStringListContainsCaseInsensistive(res.Result.MemberUser, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member users %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if !data.Groups.IsNull() && res.Result.MemberGroup != nil {
-			tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member groups %v", *res.Result.MemberGroup))
-			var changedVals []string
-			for _, value := range data.Groups.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member groups failed with error %s", err))
-				}
-				if isStringListContainsCaseInsensistive(res.Result.MemberGroup, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member groups %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+		var diag diag.Diagnostics
+		data.Users, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	}
+	if !data.Groups.IsNull() && res.Result.MemberGroup != nil {
+		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member groups %v", *res.Result.MemberGroup))
+		var changedVals []string
+		for _, value := range data.Groups.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member groups failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.Groups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if isStringListContainsCaseInsensistive(res.Result.MemberGroup, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member groups %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if !data.ExternalMembers.IsNull() && res.Result.Ipaexternalmember != nil {
-			tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member groups %v", *res.Result.Ipaexternalmember))
-			var changedVals []string
-			for _, value := range data.ExternalMembers.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group external member failed with error %s", err))
-				}
-				if slices.Contains(*res.Result.Ipaexternalmember, val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group external member %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+		var diag diag.Diagnostics
+		data.Groups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	}
+	if !data.ExternalMembers.IsNull() && res.Result.Ipaexternalmember != nil {
+		tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group member groups %v", *res.Result.Ipaexternalmember))
+		var changedVals []string
+		for _, value := range data.ExternalMembers.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group external member failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.ExternalMembers, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if slices.Contains(*res.Result.Ipaexternalmember, val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa group external member %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if res.Result.MemberUser == nil && res.Result.MemberGroup == nil && res.Result.Ipaexternalmember == nil {
-			resp.State.RemoveResource(ctx)
-			return
+		var diag diag.Diagnostics
+		data.ExternalMembers, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 		}
+	}
+	if res.Result.MemberUser == nil && res.Result.MemberGroup == nil && res.Result.Ipaexternalmember == nil {
+		resp.State.RemoveResource(ctx)
+		return
 	}
 
 	// Save updated data into Terraform state
@@ -654,7 +494,7 @@ func (r *userGroupMembership) Delete(ctx context.Context, req resource.DeleteReq
 
 	optArgs := ipa.GroupRemoveMemberOptionalArgs{}
 
-	nameId, typeId, userId, err := parseUserMembershipID(data.Id.ValueString())
+	nameId, _, _, err := parseUserMembershipID(data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_user_group_membership %s: %s", data.Id.ValueString(), err))
 
@@ -664,41 +504,29 @@ func (r *userGroupMembership) Delete(ctx context.Context, req resource.DeleteReq
 		Cn: nameId,
 	}
 
-	switch typeId {
-	case "g":
-		v := []string{userId}
-		optArgs.Group = &v
-	case "u":
-		v := []string{userId}
+	if len(data.Users.Elements()) > 0 {
+		var v []string
+		for _, value := range data.Users.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.User = &v
-	case "e":
-		v := []string{userId}
+	}
+	if len(data.Groups.Elements()) > 0 {
+		var v []string
+		for _, value := range data.Groups.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
+		optArgs.Group = &v
+	}
+	if len(data.ExternalMembers.Elements()) > 0 {
+		var v []string
+		for _, value := range data.ExternalMembers.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Ipaexternalmember = &v
-	case "m":
-		if len(data.Users.Elements()) > 0 {
-			var v []string
-			for _, value := range data.Users.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.User = &v
-		}
-		if len(data.Groups.Elements()) > 0 {
-			var v []string
-			for _, value := range data.Groups.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Group = &v
-		}
-		if len(data.ExternalMembers.Elements()) > 0 {
-			var v []string
-			for _, value := range data.ExternalMembers.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Ipaexternalmember = &v
-		}
 	}
 
 	if resp.Diagnostics.HasError() {

@@ -24,7 +24,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -38,6 +37,7 @@ import (
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
 var _ resource.ResourceWithModifyPlan = &UserResource{}
+var _ resource.ResourceWithUpgradeState = &UserResource{}
 
 func NewUserResource() resource.Resource {
 	return &UserResource{}
@@ -104,7 +104,6 @@ type UserResourceModel struct {
 	EmployeeNumber         types.String `tfsdk:"employee_number"`
 	EmployeeType           types.String `tfsdk:"employee_type"`
 	PreferredLanguage      types.String `tfsdk:"preferred_language"`
-	AccountDisabled        types.Bool   `tfsdk:"account_disabled"`
 	State                  types.String `tfsdk:"state"`
 	SshPublicKeys          types.List   `tfsdk:"ssh_public_key"`
 	UserCerts              types.Set    `tfsdk:"user_certificates"`
@@ -311,14 +310,6 @@ func userSchema() schema.Schema {
 				MarkdownDescription: "Preferred Language",
 				Optional:            true,
 			},
-			"account_disabled": schema.BoolAttribute{
-				MarkdownDescription: "Account disabled.",
-				DeprecationMessage:  "use `state = disabled` instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
-			},
 			"ssh_public_key": schema.ListAttribute{
 				MarkdownDescription: "List of SSH public keys",
 				Optional:            true,
@@ -350,7 +341,7 @@ func userSchema() schema.Schema {
 				ElementType:         types.StringType,
 			},
 		},
-		Version: 1,
+		Version: 2,
 	}
 }
 
@@ -388,15 +379,6 @@ func (r *UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	}
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
-	if data.State.Equal(types.StringValue("active")) {
-		if data.AccountDisabled.ValueBool() {
-			data.State = types.StringValue("disabled")
-		}
-	}
-	if !req.State.Raw.IsNull() && data.UserPassword.IsUnknown() {
-		data.UserPassword = types.StringNull()
-	}
 	// create as preserved
 	if req.State.Raw.IsNull() && data.State.Equal(types.StringValue("preserved")) {
 		resp.Diagnostics.AddError("User Lifecycle", "Creating a preserved user is not allowed.")

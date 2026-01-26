@@ -19,9 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -48,40 +46,13 @@ type HbacPolicyServiceMembershipResource struct {
 type HbacPolicyServiceMembershipResourceModel struct {
 	Id            types.String `tfsdk:"id"`
 	Name          types.String `tfsdk:"name"`
-	Service       types.String `tfsdk:"service"`
 	Services      types.List   `tfsdk:"services"`
-	ServiceGroup  types.String `tfsdk:"servicegroup"`
 	ServiceGroups types.List   `tfsdk:"servicegroups"`
 	Identifier    types.String `tfsdk:"identifier"`
 }
 
 func (r *HbacPolicyServiceMembershipResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_hbac_policy_service_membership"
-}
-
-func (r *HbacPolicyServiceMembershipResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("service"),
-			path.MatchRoot("services"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("service"),
-			path.MatchRoot("servicegroup"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("service"),
-			path.MatchRoot("servicegroups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("servicegroup"),
-			path.MatchRoot("services"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("servicegroup"),
-			path.MatchRoot("servicegroups"),
-		),
-	}
 }
 
 func (r *HbacPolicyServiceMembershipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -104,26 +75,10 @@ func (r *HbacPolicyServiceMembershipResource) Schema(ctx context.Context, req re
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"service": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Service name the policy is applied t",
-				DeprecationMessage:  "use services instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"services": schema.ListAttribute{
 				MarkdownDescription: "List of service name the policy is applied t",
 				Optional:            true,
 				ElementType:         types.StringType,
-			},
-			"servicegroup": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Service group name the policy is applied to",
-				DeprecationMessage:  "use servicegroups instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"servicegroups": schema.ListAttribute{
 				MarkdownDescription: "List of service group name the policy is applied to",
@@ -132,7 +87,7 @@ func (r *HbacPolicyServiceMembershipResource) Schema(ctx context.Context, req re
 			},
 			"identifier": schema.StringAttribute{
 				MarkdownDescription: "Unique identifier to differentiate multiple HBAC policy service membership resources on the same HBAC policy. Manadatory for using services/servicegroups configurations.",
-				Optional:            true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -178,16 +133,6 @@ func (r *HbacPolicyServiceMembershipResource) Create(ctx context.Context, req re
 	args := ipa.HbacruleAddServiceArgs{
 		Cn: data.Name.ValueString(),
 	}
-	if !data.Service.IsNull() {
-		v := []string{data.Service.ValueString()}
-		optArgs.Hbacsvc = &v
-		user_id = "s"
-	}
-	if !data.ServiceGroup.IsNull() {
-		v := []string{data.ServiceGroup.ValueString()}
-		optArgs.Hbacsvcgroup = &v
-		user_id = "sg"
-	}
 	if !data.Services.IsNull() || !data.ServiceGroups.IsNull() {
 		if !data.Services.IsNull() {
 			var v []string
@@ -217,17 +162,8 @@ func (r *HbacPolicyServiceMembershipResource) Create(ctx context.Context, req re
 		resp.Diagnostics.AddWarning("Client Warning", fmt.Sprintf("Warning creating freeipa sudo rule service membership: %v", _v.Failed))
 	}
 
-	switch user_id {
-	case "s":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), user_id, data.Service.ValueString())
-		data.Id = types.StringValue(id)
-	case "sg":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), user_id, data.ServiceGroup.ValueString())
-		data.Id = types.StringValue(id)
-	case "ms":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), user_id, data.Identifier.ValueString())
-		data.Id = types.StringValue(id)
-	}
+	id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), user_id, data.Identifier.ValueString())
+	data.Id = types.StringValue(id)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -243,7 +179,7 @@ func (r *HbacPolicyServiceMembershipResource) Read(ctx context.Context, req reso
 		return
 	}
 
-	hbacpolicyid, typeId, policyId, err := parseHBACPolicyServiceMembershipID(data.Id.ValueString())
+	hbacpolicyid, _, _, err := parseHBACPolicyServiceMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_hbac_policy_service_membership: %s", err))
@@ -271,55 +207,40 @@ func (r *HbacPolicyServiceMembershipResource) Read(ctx context.Context, req reso
 		}
 	}
 
-	switch typeId {
-	case "s":
-		if res.Result.MemberserviceHbacsvc == nil || !slices.Contains(*res.Result.MemberserviceHbacsvc, policyId) {
-			tflog.Debug(ctx, "[DEBUG] HBAC policy service membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "sg":
-		if res.Result.MemberserviceHbacsvcgroup == nil || !slices.Contains(*res.Result.MemberserviceHbacsvcgroup, policyId) {
-			tflog.Debug(ctx, "[DEBUG] HBAC policy service group membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "ms":
-		if !data.Services.IsNull() {
-			var changedVals []string
-			for _, value := range data.Services.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy service member failed with error %s", err))
-				}
-				if res.Result.MemberserviceHbacsvc != nil && slices.Contains(*res.Result.MemberserviceHbacsvc, val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy service member %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+	if !data.Services.IsNull() {
+		var changedVals []string
+		for _, value := range data.Services.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy service member failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.Services, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberserviceHbacsvc != nil && slices.Contains(*res.Result.MemberserviceHbacsvc, val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy service member %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if !data.ServiceGroups.IsNull() {
-			var changedVals []string
-			for _, value := range data.ServiceGroups.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy service member failed with error %s", err))
-				}
-				if res.Result.MemberserviceHbacsvcgroup != nil && slices.Contains(*res.Result.MemberserviceHbacsvcgroup, val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy service member %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+		var diag diag.Diagnostics
+		data.Services, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	}
+	if !data.ServiceGroups.IsNull() {
+		var changedVals []string
+		for _, value := range data.ServiceGroups.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy service member failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.ServiceGroups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberserviceHbacsvcgroup != nil && slices.Contains(*res.Result.MemberserviceHbacsvcgroup, val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy service member %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
+		}
+		var diag diag.Diagnostics
+		data.ServiceGroups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 		}
 	}
 
@@ -443,7 +364,7 @@ func (r *HbacPolicyServiceMembershipResource) Delete(ctx context.Context, req re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	hbacpolicyId, typeId, _, err := parseHBACPolicyServiceMembershipID(data.Id.ValueString())
+	hbacpolicyId, _, _, err := parseHBACPolicyServiceMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_hbac_policy_user_membership: %s", err))
@@ -456,35 +377,26 @@ func (r *HbacPolicyServiceMembershipResource) Delete(ctx context.Context, req re
 		Cn: hbacpolicyId,
 	}
 
-	switch typeId {
-	case "s":
-		v := []string{data.Service.ValueString()}
+	if !data.Services.IsNull() {
+		var v []string
+		for _, value := range data.Services.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Hbacsvc = &v
-	case "sg":
-		v := []string{data.ServiceGroup.ValueString()}
+	}
+	if !data.ServiceGroups.IsNull() {
+		var v []string
+		for _, value := range data.ServiceGroups.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Hbacsvcgroup = &v
-	case "ms":
-		if !data.Services.IsNull() {
-			var v []string
-			for _, value := range data.Services.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Hbacsvc = &v
-		}
-		if !data.ServiceGroups.IsNull() {
-			var v []string
-			for _, value := range data.ServiceGroups.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Hbacsvcgroup = &v
-		}
 	}
 
 	_, err = r.client.HbacruleRemoveService(&args, &optArgs)
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error delete freeipa hbac policy servie membership: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error delete freeipa hbac policy service membership: %s", err))
 		return
 	}
 }

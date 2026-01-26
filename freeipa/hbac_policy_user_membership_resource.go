@@ -19,9 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -48,40 +46,13 @@ type HbacPolicyUserMembershipResource struct {
 type HbacPolicyUserMembershipResourceModel struct {
 	Id         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`
-	User       types.String `tfsdk:"user"`
 	Users      types.List   `tfsdk:"users"`
-	Group      types.String `tfsdk:"group"`
 	Groups     types.List   `tfsdk:"groups"`
 	Identifier types.String `tfsdk:"identifier"`
 }
 
 func (r *HbacPolicyUserMembershipResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_hbac_policy_user_membership"
-}
-
-func (r *HbacPolicyUserMembershipResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("users"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("group"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("user"),
-			path.MatchRoot("groups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("group"),
-			path.MatchRoot("users"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("group"),
-			path.MatchRoot("groups"),
-		),
-	}
 }
 
 func (r *HbacPolicyUserMembershipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -104,26 +75,10 @@ func (r *HbacPolicyUserMembershipResource) Schema(ctx context.Context, req resou
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"user": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** User FDQN the policy is applied to",
-				DeprecationMessage:  "use users instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"users": schema.ListAttribute{
 				MarkdownDescription: "List of user FQDNs to add to the HBAC policy",
 				Optional:            true,
 				ElementType:         types.StringType,
-			},
-			"group": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** User group to add to the HBAC policy",
-				DeprecationMessage:  "use hostgroups instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"groups": schema.ListAttribute{
 				MarkdownDescription: "List of user groups to add to the HBAC policy",
@@ -132,7 +87,7 @@ func (r *HbacPolicyUserMembershipResource) Schema(ctx context.Context, req resou
 			},
 			"identifier": schema.StringAttribute{
 				MarkdownDescription: "Unique identifier to differentiate multiple HBAC policy user membership resources on the same HBAC policy. Manadatory for using users/groups configurations.",
-				Optional:            true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -178,16 +133,6 @@ func (r *HbacPolicyUserMembershipResource) Create(ctx context.Context, req resou
 	args := ipa.HbacruleAddUserArgs{
 		Cn: data.Name.ValueString(),
 	}
-	if !data.User.IsNull() {
-		v := []string{data.User.ValueString()}
-		optArgs.User = &v
-		user_id = "u"
-	}
-	if !data.Group.IsNull() {
-		v := []string{data.Group.ValueString()}
-		optArgs.Group = &v
-		user_id = "g"
-	}
 	if !data.Users.IsNull() || !data.Groups.IsNull() {
 		if !data.Users.IsNull() {
 			var v []string
@@ -217,17 +162,8 @@ func (r *HbacPolicyUserMembershipResource) Create(ctx context.Context, req resou
 		resp.Diagnostics.AddWarning("Client Warning", fmt.Sprintf("Warning creating freeipa sudo rule user membership: %v", _v.Failed))
 	}
 
-	switch user_id {
-	case "u":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), user_id, data.User.ValueString())
-		data.Id = types.StringValue(id)
-	case "g":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), user_id, data.Group.ValueString())
-		data.Id = types.StringValue(id)
-	case "mu":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), user_id, data.Identifier.ValueString())
-		data.Id = types.StringValue(id)
-	}
+	id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), user_id, data.Identifier.ValueString())
+	data.Id = types.StringValue(id)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -243,7 +179,7 @@ func (r *HbacPolicyUserMembershipResource) Read(ctx context.Context, req resourc
 		return
 	}
 
-	hbacpolicyid, typeId, policyId, err := parseHBACPolicyUserMembershipID(data.Id.ValueString())
+	hbacpolicyid, _, _, err := parseHBACPolicyUserMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_hbac_policy_user_membership: %s", err))
@@ -271,55 +207,40 @@ func (r *HbacPolicyUserMembershipResource) Read(ctx context.Context, req resourc
 		}
 	}
 
-	switch typeId {
-	case "u":
-		if res.Result.MemberuserUser == nil || !isStringListContainsCaseInsensistive(res.Result.MemberuserUser, &policyId) {
-			tflog.Debug(ctx, "[DEBUG] HBAC policy user membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "g":
-		if res.Result.MemberuserGroup == nil || !isStringListContainsCaseInsensistive(res.Result.MemberuserGroup, &policyId) {
-			tflog.Debug(ctx, "[DEBUG] HBAC policy user group membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "mu":
-		if !data.Users.IsNull() {
-			var changedVals []string
-			for _, value := range data.Users.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy user member failed with error %s", err))
-				}
-				if res.Result.MemberuserUser != nil && isStringListContainsCaseInsensistive(res.Result.MemberuserUser, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy user member %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+	if !data.Users.IsNull() {
+		var changedVals []string
+		for _, value := range data.Users.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy user member failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.Users, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberuserUser != nil && isStringListContainsCaseInsensistive(res.Result.MemberuserUser, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy user member %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if !data.Groups.IsNull() {
-			var changedVals []string
-			for _, value := range data.Groups.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy member commands failed with error %s", err))
-				}
-				if res.Result.MemberuserGroup != nil && isStringListContainsCaseInsensistive(res.Result.MemberuserGroup, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy member commands %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+		var diag diag.Diagnostics
+		data.Users, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	}
+	if !data.Groups.IsNull() {
+		var changedVals []string
+		for _, value := range data.Groups.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy member commands failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.Groups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberuserGroup != nil && isStringListContainsCaseInsensistive(res.Result.MemberuserGroup, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa hbac policy member commands %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
+		}
+		var diag diag.Diagnostics
+		data.Groups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 		}
 	}
 
@@ -443,7 +364,7 @@ func (r *HbacPolicyUserMembershipResource) Delete(ctx context.Context, req resou
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	hbacpolicyId, typeId, _, err := parseHBACPolicyUserMembershipID(data.Id.ValueString())
+	hbacpolicyId, _, _, err := parseHBACPolicyUserMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_hbac_policy_user_membership: %s", err))
@@ -456,30 +377,21 @@ func (r *HbacPolicyUserMembershipResource) Delete(ctx context.Context, req resou
 		Cn: hbacpolicyId,
 	}
 
-	switch typeId {
-	case "u":
-		v := []string{data.User.ValueString()}
+	if !data.Users.IsNull() {
+		var v []string
+		for _, value := range data.Users.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.User = &v
-	case "g":
-		v := []string{data.Group.ValueString()}
+	}
+	if !data.Groups.IsNull() {
+		var v []string
+		for _, value := range data.Groups.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Group = &v
-	case "mu":
-		if !data.Users.IsNull() {
-			var v []string
-			for _, value := range data.Users.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.User = &v
-		}
-		if !data.Groups.IsNull() {
-			var v []string
-			for _, value := range data.Groups.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Group = &v
-		}
 	}
 
 	_, err = r.client.HbacruleRemoveUser(&args, &optArgs)

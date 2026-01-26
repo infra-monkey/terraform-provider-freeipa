@@ -19,9 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -48,40 +46,13 @@ type SudoRuleDenyCmdMembershipResource struct {
 type SudoRuleDenyCmdMembershipResourceModel struct {
 	Id            types.String `tfsdk:"id"`
 	Name          types.String `tfsdk:"name"`
-	SudoCmd       types.String `tfsdk:"sudocmd"`
 	SudoCmds      types.List   `tfsdk:"sudocmds"`
-	SudoCmdGroup  types.String `tfsdk:"sudocmd_group"`
 	SudoCmdGroups types.List   `tfsdk:"sudocmd_groups"`
 	Identifier    types.String `tfsdk:"identifier"`
 }
 
 func (r *SudoRuleDenyCmdMembershipResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_sudo_rule_denycmd_membership"
-}
-
-func (r *SudoRuleDenyCmdMembershipResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("sudocmd"),
-			path.MatchRoot("sudocmds"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("sudocmd"),
-			path.MatchRoot("sudocmd_group"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("sudocmd"),
-			path.MatchRoot("sudocmd_groups"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("sudocmd_group"),
-			path.MatchRoot("sudocmds"),
-		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("sudocmd_group"),
-			path.MatchRoot("sudocmd_groups"),
-		),
-	}
 }
 
 func (r *SudoRuleDenyCmdMembershipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -104,26 +75,10 @@ func (r *SudoRuleDenyCmdMembershipResource) Schema(ctx context.Context, req reso
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"sudocmd": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Sudo command to deny by the sudo rule",
-				DeprecationMessage:  "use sudocmds instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"sudocmds": schema.ListAttribute{
 				MarkdownDescription: "List of Sudo command to deny by the sudo rule",
 				Optional:            true,
 				ElementType:         types.StringType,
-			},
-			"sudocmd_group": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Sudo command group to deny by the sudo rule",
-				DeprecationMessage:  "use sudocmds instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"sudocmd_groups": schema.ListAttribute{
 				MarkdownDescription: "List of sudo command group to deny by the sudo rule",
@@ -178,16 +133,6 @@ func (r *SudoRuleDenyCmdMembershipResource) Create(ctx context.Context, req reso
 	args := ipa.SudoruleAddDenyCommandArgs{
 		Cn: data.Name.ValueString(),
 	}
-	if !data.SudoCmd.IsNull() {
-		v := []string{data.SudoCmd.ValueString()}
-		optArgs.Sudocmd = &v
-		cmd_id = "srdc"
-	}
-	if !data.SudoCmdGroup.IsNull() {
-		v := []string{data.SudoCmdGroup.ValueString()}
-		optArgs.Sudocmdgroup = &v
-		cmd_id = "srdcg"
-	}
 	if !data.SudoCmds.IsNull() || !data.SudoCmdGroups.IsNull() {
 		if !data.SudoCmds.IsNull() {
 			var v []string
@@ -217,17 +162,8 @@ func (r *SudoRuleDenyCmdMembershipResource) Create(ctx context.Context, req reso
 		resp.Diagnostics.AddWarning("Client Warning", fmt.Sprintf("Warning creating freeipa sudo rule denied command membership: %v", _v.Failed))
 	}
 
-	switch cmd_id {
-	case "srdc":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.SudoCmd.ValueString())
-		data.Id = types.StringValue(id)
-	case "srdcg":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.SudoCmdGroup.ValueString())
-		data.Id = types.StringValue(id)
-	case "msrdc":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Identifier.ValueString())
-		data.Id = types.StringValue(id)
-	}
+	id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), cmd_id, data.Identifier.ValueString())
+	data.Id = types.StringValue(id)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -243,7 +179,7 @@ func (r *SudoRuleDenyCmdMembershipResource) Read(ctx context.Context, req resour
 		return
 	}
 
-	sudoruleId, typeId, cmdId, err := parseSudoRuleDenyCommandMembershipID(data.Id.ValueString())
+	sudoruleId, _, _, err := parseSudoRuleDenyCommandMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudorule_denycmd_membership: %s", err))
@@ -271,55 +207,40 @@ func (r *SudoRuleDenyCmdMembershipResource) Read(ctx context.Context, req resour
 		}
 	}
 
-	switch typeId {
-	case "srdc":
-		if res.Result.MemberdenycmdSudocmd == nil || !isStringListContainsCaseInsensistive(res.Result.MemberdenycmdSudocmd, &cmdId) {
-			tflog.Debug(ctx, "[DEBUG] Sudo rule denied command membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "srdcg":
-		if res.Result.MemberdenycmdSudocmdgroup == nil || !isStringListContainsCaseInsensistive(res.Result.MemberdenycmdSudocmdgroup, &cmdId) {
-			tflog.Debug(ctx, "[DEBUG] Sudo rule denied command membership does not exist")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "msrdc":
-		if !data.SudoCmds.IsNull() {
-			var changedVals []string
-			for _, value := range data.SudoCmds.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command member commands failed with error %s", err))
-				}
-				if res.Result.MemberdenycmdSudocmd != nil && isStringListContainsCaseInsensistive(res.Result.MemberdenycmdSudocmd, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command member commands %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+	if !data.SudoCmds.IsNull() {
+		var changedVals []string
+		for _, value := range data.SudoCmds.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command member commands failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.SudoCmds, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberdenycmdSudocmd != nil && isStringListContainsCaseInsensistive(res.Result.MemberdenycmdSudocmd, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command member commands %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
 		}
-		if !data.SudoCmdGroups.IsNull() {
-			var changedVals []string
-			for _, value := range data.SudoCmdGroups.Elements() {
-				val, err := strconv.Unquote(value.String())
-				if err != nil {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command member commands failed with error %s", err))
-				}
-				if res.Result.MemberdenycmdSudocmdgroup != nil && isStringListContainsCaseInsensistive(res.Result.MemberdenycmdSudocmdgroup, &val) {
-					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command member commands %s is present in results", val))
-					changedVals = append(changedVals, val)
-				}
+		var diag diag.Diagnostics
+		data.SudoCmds, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	}
+	if !data.SudoCmdGroups.IsNull() {
+		var changedVals []string
+		for _, value := range data.SudoCmdGroups.Elements() {
+			val, err := strconv.Unquote(value.String())
+			if err != nil {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command member commands failed with error %s", err))
 			}
-			var diag diag.Diagnostics
-			data.SudoCmdGroups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-			if diag.HasError() {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			if res.Result.MemberdenycmdSudocmdgroup != nil && isStringListContainsCaseInsensistive(res.Result.MemberdenycmdSudocmdgroup, &val) {
+				tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo command member commands %s is present in results", val))
+				changedVals = append(changedVals, val)
 			}
+		}
+		var diag diag.Diagnostics
+		data.SudoCmdGroups, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 		}
 	}
 
@@ -443,7 +364,7 @@ func (r *SudoRuleDenyCmdMembershipResource) Delete(ctx context.Context, req reso
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	cmdgrpId, typeId, _, err := parseSudoRuleDenyCommandMembershipID(data.Id.ValueString())
+	cmdgrpId, _, _, err := parseSudoRuleDenyCommandMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudo_rule_denycmd_membership: %s", err))
@@ -456,30 +377,21 @@ func (r *SudoRuleDenyCmdMembershipResource) Delete(ctx context.Context, req reso
 		Cn: cmdgrpId,
 	}
 
-	switch typeId {
-	case "srdc":
-		v := []string{data.SudoCmd.ValueString()}
+	if !data.SudoCmds.IsNull() {
+		var v []string
+		for _, value := range data.SudoCmds.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Sudocmd = &v
-	case "srdcg":
-		v := []string{data.SudoCmdGroup.ValueString()}
+	}
+	if !data.SudoCmdGroups.IsNull() {
+		var v []string
+		for _, value := range data.SudoCmdGroups.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
+		}
 		optArgs.Sudocmdgroup = &v
-	case "msrdc":
-		if !data.SudoCmds.IsNull() {
-			var v []string
-			for _, value := range data.SudoCmds.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Sudocmd = &v
-		}
-		if !data.SudoCmdGroups.IsNull() {
-			var v []string
-			for _, value := range data.SudoCmdGroups.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.Sudocmdgroup = &v
-		}
 	}
 
 	_, err = r.client.SudoruleRemoveDenyCommand(&args, &optArgs)

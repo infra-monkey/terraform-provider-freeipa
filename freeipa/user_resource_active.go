@@ -380,8 +380,8 @@ func (r ActiveUserResource) ReadUser(ctx context.Context, req resource.ReadReque
 	if res.Result.Preferredlanguage != nil && !data.PreferredLanguage.IsNull() {
 		data.PreferredLanguage = types.StringValue(*res.Result.Preferredlanguage)
 	}
-	if res.Result.Nsaccountlock != nil && !data.AccountDisabled.IsNull() {
-		data.AccountDisabled = types.BoolValue(*res.Result.Nsaccountlock)
+	if res.Result.Nsaccountlock != nil && (*res.Result.Nsaccountlock && data.State.Equal(types.StringValue("active"))) {
+		data.State = types.StringValue("disabled")
 	}
 	if res.Result.Ipasshpubkey != nil && !data.SshPublicKeys.IsNull() {
 		data.SshPublicKeys, _ = types.ListValueFrom(ctx, types.StringType, res.Result.Ipasshpubkey)

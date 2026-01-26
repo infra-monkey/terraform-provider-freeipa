@@ -19,9 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -48,22 +46,12 @@ type SudoRuleRunAsUserMembershipResource struct {
 type SudoRuleRunAsUserMembershipResourceModel struct {
 	Id         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`
-	RunAsUser  types.String `tfsdk:"runasuser"`
 	RunAsUsers types.List   `tfsdk:"runasusers"`
 	Identifier types.String `tfsdk:"identifier"`
 }
 
 func (r *SudoRuleRunAsUserMembershipResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_sudo_rule_runasuser_membership"
-}
-
-func (r *SudoRuleRunAsUserMembershipResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		resourcevalidator.Conflicting(
-			path.MatchRoot("runasuser"),
-			path.MatchRoot("runasusers"),
-		),
-	}
 }
 
 func (r *SudoRuleRunAsUserMembershipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -86,14 +74,6 @@ func (r *SudoRuleRunAsUserMembershipResource) Schema(ctx context.Context, req re
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"runasuser": schema.StringAttribute{
-				MarkdownDescription: "**deprecated** Run As User to add to the sudo rule. Can be an external user (local user of ipa clients)",
-				DeprecationMessage:  "use runasusers instead",
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"runasusers": schema.ListAttribute{
 				MarkdownDescription: "List of Run As User to add to the sudo rule. Can be an external user (local user of ipa clients)",
 				Optional:            true,
@@ -101,7 +81,7 @@ func (r *SudoRuleRunAsUserMembershipResource) Schema(ctx context.Context, req re
 			},
 			"identifier": schema.StringAttribute{
 				MarkdownDescription: "Unique identifier to differentiate multiple sudo rule runasuser membership resources on the same sudo rule. Manadatory for using runasusers configurations.",
-				Optional:            true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -147,11 +127,6 @@ func (r *SudoRuleRunAsUserMembershipResource) Create(ctx context.Context, req re
 	args := ipa.SudoruleAddRunasuserArgs{
 		Cn: data.Name.ValueString(),
 	}
-	if !data.RunAsUser.IsNull() {
-		v := []string{data.RunAsUser.ValueString()}
-		optArgs.User = &v
-		usr_id = "srrau"
-	}
 	if !data.RunAsUsers.IsNull() {
 		var v []string
 		for _, value := range data.RunAsUsers.Elements() {
@@ -171,14 +146,8 @@ func (r *SudoRuleRunAsUserMembershipResource) Create(ctx context.Context, req re
 		resp.Diagnostics.AddWarning("Client Warning", fmt.Sprintf("Warning creating freeipa sudo rule runasuser membership: %v", _v.Failed))
 	}
 
-	switch usr_id {
-	case "srrau":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), usr_id, data.RunAsUser.ValueString())
-		data.Id = types.StringValue(id)
-	case "msrrau":
-		id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), usr_id, data.Identifier.ValueString())
-		data.Id = types.StringValue(id)
-	}
+	id = fmt.Sprintf("%s/%s/%s", encodeSlash(data.Name.ValueString()), usr_id, data.Identifier.ValueString())
+	data.Id = types.StringValue(id)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -194,7 +163,7 @@ func (r *SudoRuleRunAsUserMembershipResource) Read(ctx context.Context, req reso
 		return
 	}
 
-	sudoruleId, typeId, usrId, err := parseSudoRuleRunAsUserMembershipID(data.Id.ValueString())
+	sudoruleId, _, _, err := parseSudoRuleRunAsUserMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudo_rule_runasuser_membership: %s", err))
@@ -222,37 +191,29 @@ func (r *SudoRuleRunAsUserMembershipResource) Read(ctx context.Context, req reso
 		}
 	}
 
-	switch typeId {
-	case "srrau":
-		if res.Result.IpasudorunasUser == nil || !isStringListContainsCaseInsensistive(res.Result.IpasudorunasUser, &usrId) {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-	case "msrrau":
-		if !data.RunAsUsers.IsNull() {
-			if res.Result.IpasudorunasUser != nil {
-				var changedVals []string
-				for _, value := range data.RunAsUsers.Elements() {
-					val, err := strconv.Unquote(value.String())
-					if err != nil {
-						tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo runasgroup membership failed with error %s", err))
-					}
-					if isStringListContainsCaseInsensistive(res.Result.IpasudorunasUser, &val) {
-						tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo runasgroup membership %s is present in results", val))
-						changedVals = append(changedVals, val)
-					}
+	if !data.RunAsUsers.IsNull() {
+		if res.Result.IpasudorunasUser != nil {
+			var changedVals []string
+			for _, value := range data.RunAsUsers.Elements() {
+				val, err := strconv.Unquote(value.String())
+				if err != nil {
+					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo runasgroup membership failed with error %s", err))
 				}
-				var diag diag.Diagnostics
-				data.RunAsUsers, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
-				if diag.HasError() {
-					resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+				if isStringListContainsCaseInsensistive(res.Result.IpasudorunasUser, &val) {
+					tflog.Debug(ctx, fmt.Sprintf("[DEBUG] Read freeipa sudo runasgroup membership %s is present in results", val))
+					changedVals = append(changedVals, val)
 				}
-			} else {
-				var diag diag.Diagnostics
-				data.RunAsUsers, diag = types.ListValueFrom(ctx, types.StringType, &[]string{})
-				if diag.HasError() {
-					resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
-				}
+			}
+			var diag diag.Diagnostics
+			data.RunAsUsers, diag = types.ListValueFrom(ctx, types.StringType, &changedVals)
+			if diag.HasError() {
+				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+			}
+		} else {
+			var diag diag.Diagnostics
+			data.RunAsUsers, diag = types.ListValueFrom(ctx, types.StringType, &[]string{})
+			if diag.HasError() {
+				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 			}
 		}
 	}
@@ -352,7 +313,7 @@ func (r *SudoRuleRunAsUserMembershipResource) Delete(ctx context.Context, req re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	cmdusrId, typeId, _, err := parseSudoRuleRunAsUserMembershipID(data.Id.ValueString())
+	cmdusrId, _, _, err := parseSudoRuleRunAsUserMembershipID(data.Id.ValueString())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Error parsing ID of freeipa_sudo_rule_runasuser_membership: %s", err))
@@ -365,19 +326,13 @@ func (r *SudoRuleRunAsUserMembershipResource) Delete(ctx context.Context, req re
 		Cn: cmdusrId,
 	}
 
-	switch typeId {
-	case "srrau":
-		v := []string{data.RunAsUser.ValueString()}
-		optArgs.User = &v
-	case "msrrau":
-		if !data.RunAsUsers.IsNull() {
-			var v []string
-			for _, value := range data.RunAsUsers.Elements() {
-				val, _ := strconv.Unquote(value.String())
-				v = append(v, val)
-			}
-			optArgs.User = &v
+	if !data.RunAsUsers.IsNull() {
+		var v []string
+		for _, value := range data.RunAsUsers.Elements() {
+			val, _ := strconv.Unquote(value.String())
+			v = append(v, val)
 		}
+		optArgs.User = &v
 	}
 
 	_, err = r.client.SudoruleRemoveRunasuser(&args, &optArgs)
