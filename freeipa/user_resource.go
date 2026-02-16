@@ -379,6 +379,10 @@ func (r *UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	}
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
+	if !req.State.Raw.IsNull() && data.UserPassword.IsUnknown() {
+		data.UserPassword = types.StringNull()
+	}
 	// create as preserved
 	if req.State.Raw.IsNull() && data.State.Equal(types.StringValue("preserved")) {
 		resp.Diagnostics.AddError("User Lifecycle", "Creating a preserved user is not allowed.")
