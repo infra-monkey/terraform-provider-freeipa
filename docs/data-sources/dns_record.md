@@ -43,4 +43,5 @@ data "freeipa_dns_record" "dns-zone-1" {
 - `ptr_records` (Set of String) List of PTR records
 - `srv_records` (Set of String) List of SRV records
 - `sshfp_records` (Set of String) List of SSHFP records
+- `tlsa_records` (Set of String) List of TLSA records
 - `txt_records` (Set of String) List of TXT records

@@ -51,6 +51,7 @@ type dnsRecordDataSourceModel struct {
 	TxtRecords   types.Set    `tfsdk:"txt_records"`
 	SshfpRecords types.Set    `tfsdk:"sshfp_records"`
 	NsRecords    types.Set    `tfsdk:"ns_records"`
+	TlsaRecords  types.Set    `tfsdk:"tlsa_records"`
 }
 
 func (r *dnsRecordDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -121,6 +122,11 @@ func (r *dnsRecordDataSource) Schema(ctx context.Context, req datasource.SchemaR
 			},
 			"ns_records": schema.SetAttribute{
 				MarkdownDescription: "List of NS records",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
+			"tlsa_records": schema.SetAttribute{
+				MarkdownDescription: "List of TLSA records",
 				Computed:            true,
 				ElementType:         types.StringType,
 			},
@@ -240,6 +246,13 @@ func (r *dnsRecordDataSource) Read(ctx context.Context, req datasource.ReadReque
 	if res.Result.Nsrecord != nil {
 		var diag diag.Diagnostics
 		data.NsRecords, diag = types.SetValueFrom(ctx, types.StringType, res.Result.Nsrecord)
+		if diag.HasError() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
+		}
+	}
+	if res.Result.Tlsarecord != nil {
+		var diag diag.Diagnostics
+		data.TlsaRecords, diag = types.SetValueFrom(ctx, types.StringType, res.Result.Tlsarecord)
 		if diag.HasError() {
 			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("diag: %v\n", diag))
 		}
