@@ -93,13 +93,13 @@ func (r *DNSRecordResource) Schema(ctx context.Context, req resource.SchemaReque
 				},
 			},
 			"type": schema.StringAttribute{
-				MarkdownDescription: "The record type (A, AAAA, CNAME, MX, PTR, SRV, TXT, SSHFP, NS)",
+				MarkdownDescription: "The record type (A, AAAA, CNAME, MX, PTR, SRV, TXT, SSHFP, NS, TLSA)",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 				Validators: []validator.String{
-					stringvalidator.OneOf("A", "AAAA", "CNAME", "MX", "PTR", "SRV", "TXT", "SSHFP", "NS"),
+					stringvalidator.OneOf("A", "AAAA", "CNAME", "MX", "PTR", "SRV", "TXT", "SSHFP", "NS", "TLSA"),
 				},
 			},
 			"records": schema.SetAttribute{
@@ -191,6 +191,8 @@ func (r *DNSRecordResource) Create(ctx context.Context, req resource.CreateReque
 			optArgs.Txtrecord = &records
 		case "SSHFP":
 			optArgs.Sshfprecord = &records
+		case "TLSA":
+			optArgs.Tlsarecord = &records
 		}
 	}
 
@@ -299,6 +301,10 @@ func (r *DNSRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 		if res.Result.Sshfprecord != nil {
 			data.Records, _ = types.SetValueFrom(ctx, types.StringType, res.Result.Sshfprecord)
 		}
+	case "TLSA":
+		if res.Result.Tlsarecord != nil {
+			data.Records, _ = types.SetValueFrom(ctx, types.StringType, res.Result.Tlsarecord)
+		}
 	}
 
 	if res.Result.Dnsttl != nil && !data.TTL.IsNull() {
@@ -371,6 +377,8 @@ func (r *DNSRecordResource) Update(ctx context.Context, req resource.UpdateReque
 			optArgs.Txtrecord = &records
 		case "SSHFP":
 			optArgs.Sshfprecord = &records
+		case "TLSA":
+			optArgs.Tlsarecord = &records
 		}
 	}
 
@@ -446,6 +454,8 @@ func (r *DNSRecordResource) Delete(ctx context.Context, req resource.DeleteReque
 			optArgs.Txtrecord = &records
 		case "SSHFP":
 			optArgs.Sshfprecord = &records
+		case "TLSA":
+			optArgs.Tlsarecord = &records
 		}
 	}
 
@@ -524,6 +534,10 @@ func (r *DNSRecordResource) ImportState(ctx context.Context, req resource.Import
 	case "SSHFP":
 		if res.Result.Sshfprecord != nil {
 			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("records"), *res.Result.Sshfprecord)...)
+		}
+	case "TLSA":
+		if res.Result.Tlsarecord != nil {
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("records"), *res.Result.Tlsarecord)...)
 		}
 	}
 
